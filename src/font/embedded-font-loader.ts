@@ -12,6 +12,7 @@ import {
   type Relationship,
   resolveRelationshipTarget,
 } from "../parser/relationship-parser.js";
+import { unwrapEmbeddedFontData } from "./eot.js";
 import type { FontBuffer } from "./opentype-helpers.js";
 
 /**
@@ -42,7 +43,10 @@ export function collectEmbeddedFontBuffers(archive: PptxArchive): FontBuffer[] {
       const rel = rels.get(rId);
       if (!rel) continue;
       const path = resolveRelationshipTarget("ppt/presentation.xml", rel.target);
-      const data = archive.media.get(path);
+      const raw = archive.media.get(path);
+      if (!raw || raw.length === 0) continue;
+      // .fntdata は EOT ラップされているため生フォントに正規化してから渡す
+      const data = unwrapEmbeddedFontData(raw);
       if (data && data.length > 0) {
         buffers.push({ name: font.typeface, data });
       }

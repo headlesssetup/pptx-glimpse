@@ -1,0 +1,78 @@
+/**
+ * PowerPoint の埋め込みフォント (ppt/fonts/*.fntdata) は EOT (Embedded OpenType)
+ * 形式でラップされている (先頭が EOTSize で、末尾に生フォントデータが入る)。
+ * opentype.js は EOT を直接解釈できないため、ヘッダを解析して中の生 TTF/OTF を取り出す。
+ *
+ * EOT ヘッダ (リトルエンディアン):
+ *   0  EOTSize      ULONG
+ *   4  FontDataSize ULONG
+ *   8  Version      ULONG
+ *   12 Flags        ULONG
+ *   ...
+ *   34 MagicNumber  USHORT == 0x504C
+ */
+
+// sfnt フォント署名 (ビッグエンディアン uint32)
+const SIG_TTF = 0x00010000; // 00 01 00 00
+const SIG_OTTO = 0x4f54544f; // "OTTO"
+const SIG_TRUE = 0x74727565; // "true"
+const SIG_TTCF = 0x74746366; // "ttcf"
+
+const EOT_MAGIC = 0x504c;
+const TTEMBED_TTCOMPRESSED = 0x00000004; // MicroType Express 圧縮 (未対応)
+const TTEMBED_XORENCRYPTDATA = 0x10000000; // フォントデータが 0x50 で XOR 暗号化
+const EOT_XOR_KEY = 0x50;
+
+function u16LE(d: Uint8Array, o: number): number {
+  return d[o] | (d[o + 1] << 8);
+}
+
+function u32LE(d: Uint8Array, o: number): number {
+  return (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0;
+}
+
+function u32BE(d: Uint8Array, o: number): number {
+  return ((d[o] << 24) | (d[o + 1] << 16) | (d[o + 2] << 8) | d[o + 3]) >>> 0;
+}
+
+function isFontSignature(data: Uint8Array): boolean {
+  if (data.length < 4) return false;
+  const sig = u32BE(data, 0);
+  return sig === SIG_TTF || sig === SIG_OTTO || sig === SIG_TRUE || sig === SIG_TTCF;
+}
+
+/**
+ * 埋め込みフォントのバイナリを生 TTF/OTF に正規化する。
+ * - すでに生フォントならそのまま返す
+ * - EOT ラップなら中身を取り出す
+ * - 解釈できない (MicroType Express 圧縮など) 場合は null
+ */
+export function unwrapEmbeddedFontData(data: Uint8Array): Uint8Array | null {
+  if (isFontSignature(data)) return data;
+  return extractFontFromEot(data);
+}
+
+/** EOT ラップされたバイナリから生フォントデータを取り出す。失敗時は null。 */
+export function extractFontFromEot(data: Uint8Array): Uint8Array | null {
+  if (data.length < 82) return null;
+  if (u16LE(data, 34) !== EOT_MAGIC) return null;
+
+  const fontDataSize = u32LE(data, 4);
+  const flags = u32LE(data, 12);
+
+  if (flags & TTEMBED_TTCOMPRESSED) return null; // MicroType Express 圧縮は未対応
+  if (fontDataSize === 0 || fontDataSize > data.length) return null;
+
+  const xor = (flags & TTEMBED_XORENCRYPTDATA) !== 0;
+
+  // フォントデータは通常ファイル末尾に置かれる。末尾基準で取り出し、
+  // 署名が合わなければ EOTSize 基準のオフセットも試す。
+  const candidates = [data.length - fontDataSize, u32LE(data, 0) - fontDataSize];
+  for (const start of candidates) {
+    if (start < 0 || start + fontDataSize > data.length) continue;
+    let out = data.slice(start, start + fontDataSize);
+    if (xor) out = out.map((b) => b ^ EOT_XOR_KEY);
+    if (isFontSignature(out)) return out;
+  }
+  return null;
+}
