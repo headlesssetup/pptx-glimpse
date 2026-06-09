@@ -3,6 +3,8 @@ import type { Transform } from "./shape.js";
 
 export interface ChartElement {
   type: "chart";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   chart: ChartData;
 }

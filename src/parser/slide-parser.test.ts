@@ -83,6 +83,39 @@ describe("parseShapeTree", () => {
     expect((elements[0] as ShapeElement).placeholderType).toBe("title");
   });
 
+  it("captures the cNvPr id for animation targeting", () => {
+    const xml = `
+      <p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:sp>
+          <p:nvSpPr>
+            <p:cNvPr id="42" name="Rectangle 1"/>
+            <p:cNvSpPr/>
+            <p:nvPr/>
+          </p:nvSpPr>
+          <p:spPr>
+            <a:xfrm>
+              <a:off x="100" y="200"/>
+              <a:ext cx="300" cy="400"/>
+            </a:xfrm>
+            <a:prstGeom prst="rect"/>
+          </p:spPr>
+        </p:sp>
+      </p:spTree>
+    `;
+    const parsed = parseXml(xml);
+    const elements = parseShapeTree(
+      parsed.spTree as XmlNode | undefined,
+      new Map(),
+      "ppt/slides/slide1.xml",
+      createEmptyArchive(),
+      createColorResolver(),
+    );
+
+    expect(elements).toHaveLength(1);
+    expect((elements[0] as ShapeElement).id).toBe("42");
+  });
+
   it("defaults placeholder type to body when type is not specified", () => {
     const xml = `
       <p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"

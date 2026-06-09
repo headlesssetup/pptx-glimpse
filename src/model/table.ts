@@ -6,6 +6,8 @@ import type { TextBody } from "./text.js";
 
 export interface TableElement {
   type: "table";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   table: TableData;
 }

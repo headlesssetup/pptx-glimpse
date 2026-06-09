@@ -863,6 +863,136 @@ describe("slide placeholder text filtering", () => {
   });
 });
 
+describe("animationSteps (click build frames)", () => {
+  // 2 つの図形 (id=2 青矩形, id=3 橙楕円) と、id=3 をクリックで出現させる timing を持つスライド。
+  const animatedSlide = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm>
+      </p:grpSpPr>
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="Rectangle 1"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="457200" y="274638"/><a:ext cx="3048000" cy="1143000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>
+        </p:spPr>
+      </p:sp>
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="3" name="Ellipse 1"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="4572000" y="274638"/><a:ext cx="2286000" cy="2286000"/></a:xfrm>
+          <a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="ED7D31"/></a:solidFill>
+        </p:spPr>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+  <p:timing>
+    <p:tnLst>
+      <p:par>
+        <p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot">
+          <p:childTnLst>
+            <p:seq concurrent="1" nextAc="seek">
+              <p:cTn id="2" dur="indefinite" nodeType="mainSeq">
+                <p:childTnLst>
+                  <p:par>
+                    <p:cTn id="3" fill="hold">
+                      <p:stCondLst><p:cond delay="indefinite"/></p:stCondLst>
+                      <p:childTnLst>
+                        <p:par>
+                          <p:cTn id="4" presetID="1" presetClass="entr" presetSubtype="0" fill="hold" nodeType="clickEffect">
+                            <p:stCondLst><p:cond delay="0"/></p:stCondLst>
+                            <p:childTnLst>
+                              <p:set>
+                                <p:cBhvr>
+                                  <p:cTn id="5" dur="1" fill="hold"/>
+                                  <p:tgtEl><p:spTgt spid="3"/></p:tgtEl>
+                                  <p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst>
+                                </p:cBhvr>
+                                <p:to><p:strVal val="visible"/></p:to>
+                              </p:set>
+                            </p:childTnLst>
+                          </p:cTn>
+                        </p:par>
+                      </p:childTnLst>
+                    </p:cTn>
+                  </p:par>
+                </p:childTnLst>
+              </p:cTn>
+            </p:seq>
+          </p:childTnLst>
+        </p:cTn>
+      </p:par>
+    </p:tnLst>
+  </p:timing>
+</p:sld>`;
+
+  async function createAnimatedPptx(slideXml: string): Promise<Buffer> {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", contentTypes);
+    zip.file("_rels/.rels", rootRels);
+    zip.file("ppt/presentation.xml", presentationXml);
+    zip.file("ppt/_rels/presentation.xml.rels", presentationRels);
+    zip.file("ppt/slides/slide1.xml", slideXml);
+    zip.file("ppt/slides/_rels/slide1.xml.rels", slide1Rels);
+    zip.file("ppt/slideMasters/slideMaster1.xml", slideMaster1);
+    zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", slideMaster1Rels);
+    zip.file("ppt/slideLayouts/slideLayout1.xml", slideLayout1);
+    zip.file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", slideLayout1Rels);
+    zip.file("ppt/theme/theme1.xml", theme1);
+    return zip.generateAsync({ type: "nodebuffer" });
+  }
+
+  it("emits one frame per build step with stepIndex", async () => {
+    const pptx = await createAnimatedPptx(animatedSlide);
+    const results = await convertPptxToSvg(pptx, { animationSteps: true });
+
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.stepIndex)).toEqual([0, 1]);
+    expect(results.every((r) => r.slideNumber === 1)).toBe(true);
+
+    // フレーム0: 常時表示の矩形のみ、楕円 (entrance) は未表示
+    expect(results[0].svg).toContain("#4472C4");
+    expect(results[0].svg).not.toContain("#ED7D31");
+
+    // フレーム1: クリックで楕円が出現
+    expect(results[1].svg).toContain("#4472C4");
+    expect(results[1].svg).toContain("#ED7D31");
+  });
+
+  it("returns a single final render without animationSteps (backward compatible)", async () => {
+    const pptx = await createAnimatedPptx(animatedSlide);
+    const results = await convertPptxToSvg(pptx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].stepIndex).toBeUndefined();
+    // 既定では全要素を描画
+    expect(results[0].svg).toContain("#4472C4");
+    expect(results[0].svg).toContain("#ED7D31");
+  });
+
+  it("emits a single frame for slides without timing", async () => {
+    const pptx = await createAnimatedPptx(slide1Xml);
+    const results = await convertPptxToSvg(pptx, { animationSteps: true });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].stepIndex).toBe(0);
+  });
+
+  it("threads stepIndex through PNG conversion", async () => {
+    const pptx = await createAnimatedPptx(animatedSlide);
+    const results = await convertPptxToPng(pptx, { animationSteps: true });
+
+    expect(results).toHaveLength(2);
+    expect(results.map((r) => r.stepIndex)).toEqual([0, 1]);
+    expect(results[0].png[0]).toBe(0x89); // PNG magic byte
+  });
+});
+
 describe("presentation.noSlides warning", () => {
   async function createEmptyPptx(): Promise<Buffer> {
     const zip = new JSZip();

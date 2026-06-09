@@ -35,6 +35,8 @@ export interface CustomGeometry {
 
 export interface ShapeElement {
   type: "shape";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   geometry: Geometry;
   fill: Fill | null;
@@ -49,6 +51,8 @@ export interface ShapeElement {
 
 export interface ConnectorElement {
   type: "connector";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   geometry: Geometry;
   outline: Outline | null;
@@ -58,6 +62,8 @@ export interface ConnectorElement {
 
 export interface GroupElement {
   type: "group";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   childTransform: Transform;
   children: SlideElement[];

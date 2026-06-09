@@ -85,8 +85,34 @@ const results = await convertPptxToPng(pptx, {
   fontMapping: {
     "Custom Corp Font": "Noto Sans", // Custom font name mapping
   },
+  animationSteps: true, // Emit one frame per click-build step (see below)
 });
 ```
+
+### Animation Build Steps
+
+By default each slide is rendered once, in its final state with every object
+visible. Set `animationSteps: true` to instead render each step of a slide's
+click-triggered **entrance** / **exit** animations (objects that appear or
+disappear on click) as separate frames.
+
+```typescript
+const frames = await convertPptxToPng(pptx, { animationSteps: true });
+// frames is one entry per build step, with a stepIndex:
+//   { slideNumber: 1, stepIndex: 0, ... }  ← initial state (before any click)
+//   { slideNumber: 1, stepIndex: 1, ... }  ← after the 1st click
+//   { slideNumber: 1, stepIndex: 2, ... }  ← after the 2nd click
+```
+
+Each frame is a full render of the slide at that point in the build sequence
+(cumulative: later frames include everything revealed by earlier clicks). Slides
+without click animations produce a single frame (`stepIndex: 0`). When
+`animationSteps` is omitted the output is unchanged — one entry per slide with no
+`stepIndex`.
+
+Scope: only click-triggered entrance/exit effects are modeled. Emphasis, motion
+paths, timing/durations, and paragraph-by-paragraph text builds are not
+reflected (a text shape with a build is revealed in full at its first click).
 
 ### Advanced Usage
 
@@ -284,6 +310,7 @@ const results = await convertPptxToSvg(pptx, {
 | Slide size   | 16:9, 4:3, custom sizes                                                |
 | Theme        | Theme color scheme, theme fonts (majorFont/minorFont), theme font refs |
 | showMasterSp | Control visibility of master shapes per slide / layout                 |
+| Animations   | Click-triggered entrance / exit builds rendered as per-step frames via `animationSteps` |
 
 <details>
 <summary>Unsupported Features</summary>
@@ -298,7 +325,7 @@ const results = await convertPptxToSvg(pptx, {
 | Tables         | Table style template application, diagonal borders                         |
 | Shapes         | Shape operations (Union/Subtract/Intersect/Fragment)                       |
 | Multimedia     | Embedded video / audio                                                     |
-| Animations     | Object animations, slide transitions                                       |
+| Animations     | Emphasis / motion-path / timing-based animations, slide transitions (click entrance/exit builds are supported via `animationSteps`) |
 | Slide elements | Slide notes, comments, headers / footers, slide numbers / dates            |
 | Image formats  | EMF/WMF (parsed but not rendered)                                          |
 | Other          | Macros / VBA, sections, zoom slides                                        |

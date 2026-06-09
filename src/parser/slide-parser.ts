@@ -52,6 +52,7 @@ import {
   parseListStyle,
   resolveThemeFont,
 } from "./text-style-parser.js";
+import { parseTiming } from "./timing-parser.js";
 import type { XmlNode, XmlOrderedNode } from "./xml-parser.js";
 import { parseXml, parseXmlOrdered } from "./xml-parser.js";
 
@@ -122,7 +123,15 @@ export function parseSlide(
   const showMasterSpAttr = sld?.["@_showMasterSp"];
   const showMasterSp = showMasterSpAttr !== "0" && showMasterSpAttr !== "false";
 
-  return { slideNumber, background, elements, showMasterSp };
+  const buildSteps = parseTiming(slideXml);
+
+  return {
+    slideNumber,
+    background,
+    elements,
+    showMasterSp,
+    ...(buildSteps && { buildSteps }),
+  };
 }
 
 function parseBackground(
@@ -561,11 +570,13 @@ function parseShape(
   const effects = directEffects ?? styleRef?.effects ?? null;
 
   const cNvPr = nvSpPr?.cNvPr as XmlNode | undefined;
+  const id = cNvPr?.["@_id"] as string | number | undefined;
   const altText = cNvPr?.["@_descr"] as string | undefined;
   const hyperlink = parseHyperlink(cNvPr?.hlinkClick as XmlNode | undefined, rels);
 
   return {
     type: "shape",
+    ...(id !== undefined && { id: String(id) }),
     transform,
     geometry,
     fill,
@@ -628,10 +639,12 @@ function parseImage(
 
   const nvPicPr = pic.nvPicPr as XmlNode | undefined;
   const cNvPr = nvPicPr?.cNvPr as XmlNode | undefined;
+  const id = cNvPr?.["@_id"] as string | number | undefined;
   const altText = cNvPr?.["@_descr"] as string | undefined;
 
   return {
     type: "image",
+    ...(id !== undefined && { id: String(id) }),
     transform,
     imageData,
     mimeType,
@@ -699,9 +712,18 @@ function parseConnector(
 
   const nvCxnSpPr = cxn.nvCxnSpPr as XmlNode | undefined;
   const cNvPr = nvCxnSpPr?.cNvPr as XmlNode | undefined;
+  const id = cNvPr?.["@_id"] as string | number | undefined;
   const altText = cNvPr?.["@_descr"] as string | undefined;
 
-  return { type: "connector", transform, geometry, outline, effects, ...(altText && { altText }) };
+  return {
+    type: "connector",
+    ...(id !== undefined && { id: String(id) }),
+    transform,
+    geometry,
+    outline,
+    effects,
+    ...(altText && { altText }),
+  };
 }
 
 function parseGroup(
@@ -758,10 +780,12 @@ function parseGroup(
 
   const nvGrpSpPr = grp.nvGrpSpPr as XmlNode | undefined;
   const cNvPr = nvGrpSpPr?.cNvPr as XmlNode | undefined;
+  const id = cNvPr?.["@_id"] as string | number | undefined;
   const altText = cNvPr?.["@_descr"] as string | undefined;
 
   return {
     type: "group",
+    ...(id !== undefined && { id: String(id) }),
     transform,
     childTransform,
     children,
@@ -781,6 +805,11 @@ function parseGraphicFrame(
   const xfrm = gf.xfrm as XmlNode | undefined;
   const transform = parseTransform(xfrm);
   if (!transform) return null;
+
+  const nvGraphicFramePr = gf.nvGraphicFramePr as XmlNode | undefined;
+  const cNvPr = nvGraphicFramePr?.cNvPr as XmlNode | undefined;
+  const rawId = cNvPr?.["@_id"] as string | number | undefined;
+  const idSpread = rawId !== undefined ? { id: String(rawId) } : {};
 
   const graphic = gf.graphic as XmlNode | undefined;
   const graphicData = graphic?.graphicData as XmlNode | undefined;
@@ -803,7 +832,7 @@ function parseGraphicFrame(
     const chartData = parseChart(chartXml, colorResolver);
     if (!chartData) return null;
 
-    return { type: "chart", transform, chart: chartData };
+    return { type: "chart", ...idSpread, transform, chart: chartData };
   }
 
   // Table
@@ -812,7 +841,7 @@ function parseGraphicFrame(
     const tableData = parseTable(tblNode, colorResolver, fontScheme);
     if (!tableData) return null;
 
-    return { type: "table", transform, table: tableData };
+    return { type: "table", ...idSpread, transform, table: tableData };
   }
 
   // SmartArt (Diagram) — Transitional and Strict URIs

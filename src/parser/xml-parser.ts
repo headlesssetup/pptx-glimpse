@@ -34,6 +34,11 @@ const ARRAY_TAGS = new Set([
   "embeddedFont", // 埋め込みフォント (Embedded Font)
   "effectStyle", // エフェクトスタイル (Effect Style)
   "font", // スクリプトベースフォント定義 (Script-based Font)
+  // アニメーション (p:timing) 関連。図形ツリーには出現しないため衝突しない。
+  "par", // 並列タイミングノード (Parallel Time Node) — クリックグループ/効果グループ
+  "seq", // 順次タイミングノード (Sequence Time Node)
+  "cBhvr", // 共通アニメーション挙動 (Common Behavior)
+  "cond", // 開始/終了条件 (Condition)
 ]);
 
 // シングルトンパーサーインスタンス。

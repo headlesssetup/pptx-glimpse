@@ -12,7 +12,27 @@ import { renderTable } from "./table-renderer.js";
 // SVG 1.1 (W3C) で出力。CSS クラスは使わずインライン属性のみ使用する。
 // 理由: sharp (内部で librsvg を使用) が CSS セレクタを正しく解釈しないため。
 
-export function renderSlideToSvg(slide: Slide, slideSize: SlideSize): string {
+/**
+ * アニメーションのビルドステップを描画する際の表示状態。
+ * - animatedIds: スライド内でアニメーション対象になっている全図形の id
+ * - visibleIds: このフレームで表示されている図形の id
+ */
+interface RenderFrame {
+  visibleIds: Set<string>;
+  animatedIds: Set<string>;
+}
+
+// 図形がこのフレームで表示されるか判定する。
+// id を持たない / アニメーション対象でない図形は常に表示。
+// アニメーション対象の図形は visibleIds に含まれるときだけ表示。
+function isElementVisible(element: SlideElement, frame: RenderFrame): boolean {
+  const id = "id" in element ? element.id : undefined;
+  if (id === undefined) return true;
+  if (!frame.animatedIds.has(id)) return true;
+  return frame.visibleIds.has(id);
+}
+
+export function renderSlideToSvg(slide: Slide, slideSize: SlideSize, frame?: RenderFrame): string {
   const width = emuToPixels(slideSize.width);
   const height = emuToPixels(slideSize.height);
 
@@ -39,7 +59,8 @@ export function renderSlideToSvg(slide: Slide, slideSize: SlideSize): string {
 
   // Elements
   for (const element of slide.elements) {
-    const result = renderElement(element);
+    if (frame && !isElementVisible(element, frame)) continue;
+    const result = renderElement(element, frame);
     if (result) {
       parts.push(result.content);
       defs.push(...result.defs);
@@ -55,7 +76,49 @@ export function renderSlideToSvg(slide: Slide, slideSize: SlideSize): string {
   return parts.join("");
 }
 
-function renderElement(element: SlideElement): RenderResult | null {
+/**
+ * クリックアニメーションのビルドステップを順に適用し、各フレームの SVG を返す。
+ * 戻り値[0] は初期状態 (entrance 前)、[i] は i 回目のクリック後の状態。
+ * slide.buildSteps が無い場合は全要素を描画した単一フレームを返す。
+ */
+export function renderSlideToSvgFrames(slide: Slide, slideSize: SlideSize): string[] {
+  const steps = slide.buildSteps;
+  if (!steps || steps.length === 0) {
+    return [renderSlideToSvg(slide, slideSize)];
+  }
+
+  // アニメーション対象の全 id と、entrance で出現する id を集計
+  const animatedIds = new Set<string>();
+  const everRevealed = new Set<string>();
+  for (const step of steps) {
+    for (const id of step.revealedIds) {
+      animatedIds.add(id);
+      everRevealed.add(id);
+    }
+    for (const id of step.hiddenIds) animatedIds.add(id);
+  }
+
+  // 初期表示: entrance を持たない (exit のみの) 図形は最初から表示されている
+  const visibleIds = new Set<string>();
+  for (const id of animatedIds) {
+    if (!everRevealed.has(id)) visibleIds.add(id);
+  }
+
+  const frames: string[] = [];
+  frames.push(renderSlideToSvg(slide, slideSize, { visibleIds: new Set(visibleIds), animatedIds }));
+
+  for (const step of steps) {
+    for (const id of step.revealedIds) visibleIds.add(id);
+    for (const id of step.hiddenIds) visibleIds.delete(id);
+    frames.push(
+      renderSlideToSvg(slide, slideSize, { visibleIds: new Set(visibleIds), animatedIds }),
+    );
+  }
+
+  return frames;
+}
+
+function renderElement(element: SlideElement, frame?: RenderFrame): RenderResult | null {
   let result: RenderResult | null = null;
   switch (element.type) {
     case "shape":
@@ -68,7 +131,7 @@ function renderElement(element: SlideElement): RenderResult | null {
       result = renderConnector(element);
       break;
     case "group":
-      result = renderGroup(element);
+      result = renderGroup(element, frame);
       break;
     case "chart":
       result = renderChart(element);
@@ -101,7 +164,7 @@ function addAriaLabel(svgFragment: string, altText: string): string {
   return svgFragment.replace(/^<(g|image|path)\b/, `<$1 role="img" aria-label="${escaped}"`);
 }
 
-function renderGroup(group: GroupElement): RenderResult {
+function renderGroup(group: GroupElement, frame?: RenderFrame): RenderResult {
   const x = emuToPixels(group.transform.offsetX);
   const y = emuToPixels(group.transform.offsetY);
   const w = emuToPixels(group.transform.extentWidth);
@@ -138,7 +201,8 @@ function renderGroup(group: GroupElement): RenderResult {
   parts.push(`<g transform="${transformParts.join(" ")}">`);
 
   for (const child of group.children) {
-    const childResult = renderElement(child);
+    if (frame && !isElementVisible(child, frame)) continue;
+    const childResult = renderElement(child, frame);
     if (childResult) {
       parts.push(childResult.content);
       defs.push(...childResult.defs);

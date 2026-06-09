@@ -12,7 +12,7 @@ import type { ShapeElement, SlideElement } from "./model/shape.js";
 import { clearXmlCache, enableXmlCache } from "./parser/xml-parser.js";
 import { svgToPng } from "./png/png-converter.js";
 import { parsePptxData, parseSlideWithLayout } from "./pptx-data-parser.js";
-import { renderSlideToSvg } from "./renderer/svg-renderer.js";
+import { renderSlideToSvg, renderSlideToSvgFrames } from "./renderer/svg-renderer.js";
 import { DEFAULT_OUTPUT_WIDTH } from "./utils/constants.js";
 import type { LogLevel } from "./warning-logger.js";
 import { flushWarnings, initWarningLogger, warn } from "./warning-logger.js";
@@ -32,11 +32,20 @@ export interface ConvertOptions {
   fontMapping?: FontMapping;
   /** true のとき OS のシステムフォントをスキャンせず fontDirs のみを使用する */
   skipSystemFonts?: boolean;
+  /**
+   * true のとき、クリックで進行するアニメーション (entrance/exit) の各ステップを
+   * 個別のフレームとして出力する。各スライドは最終状態ではなく、
+   * ビルドステップごとに 1 件の結果 (stepIndex 付き) を生成する。
+   * アニメーションが無いスライドは従来通り 1 件 (stepIndex: 0) を生成する。
+   */
+  animationSteps?: boolean;
 }
 
 export interface SlideSvg {
   slideNumber: number;
   svg: string;
+  /** animationSteps 有効時のビルドステップ番号 (0 = 初期状態)。それ以外は未設定 */
+  stepIndex?: number;
 }
 
 export interface SlideImage {
@@ -44,6 +53,8 @@ export interface SlideImage {
   png: Buffer;
   width: number;
   height: number;
+  /** animationSteps 有効時のビルドステップ番号 (0 = 初期状態)。それ以外は未設定 */
+  stepIndex?: number;
 }
 
 export async function convertPptxToSvg(
@@ -89,8 +100,15 @@ export async function convertPptxToSvg(
         slide.showMasterSp && layoutShowMasterSp ? masterElements : [];
       slide.elements = mergeElements(effectiveMasterElements, layoutElements, slide.elements);
 
-      const svg = renderSlideToSvg(slide, data.presInfo.slideSize);
-      results.push({ slideNumber, svg });
+      if (options?.animationSteps) {
+        const frames = renderSlideToSvgFrames(slide, data.presInfo.slideSize);
+        frames.forEach((svg, stepIndex) => {
+          results.push({ slideNumber, svg, stepIndex });
+        });
+      } else {
+        const svg = renderSlideToSvg(slide, data.presInfo.slideSize);
+        results.push({ slideNumber, svg });
+      }
     }
 
     flushWarnings();
@@ -174,13 +192,14 @@ export async function convertPptxToPng(
   const fontBuffers = loadFontBuffers(options?.fontDirs, options?.skipSystemFonts);
 
   const results: SlideImage[] = [];
-  for (const { slideNumber, svg } of svgResults) {
+  for (const { slideNumber, svg, stepIndex } of svgResults) {
     const pngResult = await svgToPng(svg, { width, height, fontBuffers });
     results.push({
       slideNumber,
       png: pngResult.png,
       width: pngResult.width,
       height: pngResult.height,
+      ...(stepIndex !== undefined && { stepIndex }),
     });
   }
 

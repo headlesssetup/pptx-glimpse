@@ -27,6 +27,8 @@ export interface TileInfo {
 
 export interface ImageElement {
   type: "image";
+  /** 図形の cNvPr/@id。アニメーション (p:timing) のターゲット解決に使用 */
+  id?: string;
   transform: Transform;
   imageData: string;
   mimeType: string;
