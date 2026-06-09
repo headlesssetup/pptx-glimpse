@@ -171,55 +171,86 @@ export async function createOpentypeSetupFromBuffers(
   const opentype = await tryLoadOpentype();
   if (!opentype) return null;
 
-  const mapping = createFontMapping(fontMapping);
-  const reverseMap = buildReverseMapping(mapping);
-  const measurerFonts = new Map<string, OpentypeFont>();
-  const resolverFonts = new Map<string, OpentypeFullFont>();
-  const plainRegular = new Set<string>();
-  let firstMeasurerFont: OpentypeFont | null = null;
-  let firstResolverFont: OpentypeFullFont | null = null;
+  const reg = newFontRegistry(createFontMapping(fontMapping));
+  registerBufferList(reg, fontBuffers, opentype);
+  return buildSetup(reg);
+}
 
-  for (const buffer of fontBuffers) {
+/** フォント登録の作業状態 */
+interface FontRegistry {
+  measurerFonts: Map<string, OpentypeFont>;
+  resolverFonts: Map<string, OpentypeFullFont>;
+  plainRegular: Set<string>;
+  reverseMap: Map<string, string[]>;
+  firstMeasurerFont: OpentypeFont | null;
+  firstResolverFont: OpentypeFullFont | null;
+}
+
+function newFontRegistry(mapping: FontMapping): FontRegistry {
+  return {
+    measurerFonts: new Map(),
+    resolverFonts: new Map(),
+    plainRegular: new Set(),
+    reverseMap: buildReverseMapping(mapping),
+    firstMeasurerFont: null,
+    firstResolverFont: null,
+  };
+}
+
+function noteFirstFont(reg: FontRegistry, font: OpentypeFontWithNames): void {
+  if (!reg.firstMeasurerFont) reg.firstMeasurerFont = font;
+  if (!reg.firstResolverFont) reg.firstResolverFont = font as unknown as OpentypeFullFont;
+}
+
+/** パース済みフォントの全フェイス名をレジストリに登録する */
+function registerParsedFont(
+  reg: FontRegistry,
+  font: OpentypeFontWithNames,
+  names: Iterable<string>,
+): void {
+  noteFirstFont(reg, font);
+  const style = getFontStyle(font);
+  for (const name of names) {
+    registerFont(
+      name,
+      font,
+      style,
+      reg.reverseMap,
+      reg.measurerFonts,
+      reg.resolverFonts,
+      reg.plainRegular,
+    );
+  }
+}
+
+/** フォントバッファ群をレジストリに登録する (TTC は names テーブル、それ以外は buffer.name) */
+function registerBufferList(
+  reg: FontRegistry,
+  buffers: FontBuffer[],
+  opentype: { parse: (buffer: ArrayBuffer) => OpentypeFontWithNames },
+): void {
+  for (const buffer of buffers) {
     try {
       const arrayBuffer = toArrayBuffer(buffer.data);
       const isTtc = isTtcBuffer(arrayBuffer);
       const fonts = parseFontBuffer(arrayBuffer, opentype);
-
       for (const font of fonts) {
-        if (!firstMeasurerFont) firstMeasurerFont = font;
-        if (!firstResolverFont) firstResolverFont = font as unknown as OpentypeFullFont;
-
-        const style = getFontStyle(font);
-        if (isTtc) {
-          // TTC: names テーブルからフォント名を取得して登録
-          for (const name of collectFontNames(font)) {
-            registerFont(name, font, style, reverseMap, measurerFonts, resolverFonts, plainRegular);
-          }
-        } else if (buffer.name) {
-          registerFont(
-            buffer.name,
-            font,
-            style,
-            reverseMap,
-            measurerFonts,
-            resolverFonts,
-            plainRegular,
-          );
-        }
+        const names = isTtc ? collectFontNames(font) : buffer.name ? [buffer.name] : [];
+        registerParsedFont(reg, font, names);
       }
     } catch {
       // パース失敗のフォントはスキップ
     }
   }
+}
 
-  if (measurerFonts.size === 0 && !firstMeasurerFont) return null;
-
-  const measurer = new OpentypeTextMeasurer(measurerFonts, firstMeasurerFont ?? undefined);
+function buildSetup(reg: FontRegistry): OpentypeSetup | null {
+  if (reg.measurerFonts.size === 0 && !reg.firstMeasurerFont) return null;
+  const measurer = new OpentypeTextMeasurer(reg.measurerFonts, reg.firstMeasurerFont ?? undefined);
   const fontResolver = new DefaultTextPathFontResolver(
-    resolverFonts,
-    firstResolverFont ?? undefined,
+    reg.resolverFonts,
+    reg.firstResolverFont ?? undefined,
   );
-
   return { measurer, fontResolver };
 }
 
@@ -343,9 +374,12 @@ export async function createOpentypeSetupFromSystem(
   additionalFontDirs?: string[],
   fontMapping?: FontMapping,
   skipSystemFonts = false,
+  extraBuffers?: FontBuffer[],
 ): Promise<OpentypeSetup | null> {
+  // extraBuffers (PPTX 埋め込みフォント等) はドキュメント固有のためキャッシュしない。
+  const hasExtra = !!extraBuffers && extraBuffers.length > 0;
   const key = buildCacheKey(additionalFontDirs, fontMapping, skipSystemFonts);
-  if (cachedSetup && cachedSetupKey === key) {
+  if (!hasExtra && cachedSetup && cachedSetupKey === key) {
     return cachedSetup;
   }
 
@@ -353,48 +387,31 @@ export async function createOpentypeSetupFromSystem(
   if (!opentype) return null;
 
   const fontFilePaths = collectFontFilePaths(additionalFontDirs, skipSystemFonts);
-  if (fontFilePaths.length === 0) return null;
+  if (fontFilePaths.length === 0 && !hasExtra) return null;
 
-  const mapping = createFontMapping(fontMapping);
-  const reverseMap = buildReverseMapping(mapping);
-  const measurerFonts = new Map<string, OpentypeFont>();
-  const resolverFonts = new Map<string, OpentypeFullFont>();
-  const plainRegular = new Set<string>();
-  let firstMeasurerFont: OpentypeFont | null = null;
-  let firstResolverFont: OpentypeFullFont | null = null;
+  const reg = newFontRegistry(createFontMapping(fontMapping));
+
+  // 埋め込みフォントを先に登録して、同名のシステムフォントより優先させる。
+  if (hasExtra) registerBufferList(reg, extraBuffers, opentype);
 
   for (const filePath of fontFilePaths) {
     try {
       const data = await readFile(filePath);
       const arrayBuffer = toArrayBuffer(data);
       const fonts = parseFontBuffer(arrayBuffer, opentype);
-
       for (const font of fonts) {
-        if (!firstMeasurerFont) firstMeasurerFont = font;
-        if (!firstResolverFont) firstResolverFont = font as unknown as OpentypeFullFont;
-
-        const style = getFontStyle(font);
         // names テーブルからフォント名を取得して登録
-        for (const name of collectFontNames(font)) {
-          registerFont(name, font, style, reverseMap, measurerFonts, resolverFonts, plainRegular);
-        }
+        registerParsedFont(reg, font, collectFontNames(font));
       }
     } catch {
       // パース失敗のフォントはスキップ
     }
   }
 
-  if (measurerFonts.size === 0 && !firstMeasurerFont) return null;
-
-  const measurer = new OpentypeTextMeasurer(measurerFonts, firstMeasurerFont ?? undefined);
-  const fontResolver = new DefaultTextPathFontResolver(
-    resolverFonts,
-    firstResolverFont ?? undefined,
-  );
-
-  const setup = { measurer, fontResolver };
-  cachedSetup = setup;
-  cachedSetupKey = key;
-
+  const setup = buildSetup(reg);
+  if (setup && !hasExtra) {
+    cachedSetup = setup;
+    cachedSetupKey = key;
+  }
   return setup;
 }

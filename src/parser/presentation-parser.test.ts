@@ -203,8 +203,32 @@ describe("parsePresentation", () => {
     expect(result.embeddedFonts![0].panose).toBe("020B0604020202020204");
     expect(result.embeddedFonts![0].pitchFamily).toBe(34);
     expect(result.embeddedFonts![0].charset).toBe(0);
+    expect(result.embeddedFonts![0].regularRId).toBe("rId10");
     expect(result.embeddedFonts![1].typeface).toBe("AnotherFont");
     expect(result.embeddedFonts![1].charset).toBe(128);
+  });
+
+  it("captures r:id for every embedded font style slot", () => {
+    const xml = `
+      <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <p:sldSz cx="9144000" cy="5143500"/>
+        <p:embeddedFontLst>
+          <p:embeddedFont>
+            <p:font typeface="Arial"/>
+            <p:regular r:id="rId10"/>
+            <p:bold r:id="rId11"/>
+            <p:italic r:id="rId12"/>
+            <p:boldItalic r:id="rId13"/>
+          </p:embeddedFont>
+        </p:embeddedFontLst>
+      </p:presentation>
+    `;
+    const font = parsePresentation(xml).embeddedFonts![0];
+    expect(font.regularRId).toBe("rId10");
+    expect(font.boldRId).toBe("rId11");
+    expect(font.italicRId).toBe("rId12");
+    expect(font.boldItalicRId).toBe("rId13");
   });
 
   it("returns undefined embeddedFonts when not present", () => {

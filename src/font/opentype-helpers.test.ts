@@ -152,6 +152,20 @@ describe("太字/斜体フェイス選択", () => {
   });
 });
 
+describe("createOpentypeSetupFromSystem extraBuffers (埋め込みフォント)", () => {
+  it("extraBuffers だけでセットアップを構築できる", async () => {
+    const buf = await createStyledFontBuffer("Embedded", "Regular", 640);
+    // skipSystemFonts=true でシステムフォントを除外し、埋め込みバッファのみ使う
+    const setup = await createOpentypeSetupFromSystem(undefined, undefined, true, [
+      { name: "Embedded", data: buf },
+    ]);
+    expect(setup).not.toBeNull();
+    expect(
+      setup!.fontResolver.resolveFont("Embedded", null)!.getAdvanceWidth("A", 1000),
+    ).toBeCloseTo(640, 0);
+  });
+});
+
 describe("createOpentypeTextMeasurerFromBuffers", () => {
   it("空配列で null を返す", async () => {
     const result = await createOpentypeTextMeasurerFromBuffers([]);

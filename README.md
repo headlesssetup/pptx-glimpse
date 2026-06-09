@@ -183,6 +183,16 @@ Default system font directories:
 
 Use the `fontDirs` option to add custom font directories. To skip system font scanning entirely and use only `fontDirs` (useful in containers, serverless environments, or when you want to bundle specific fonts to reduce startup time), set `skipSystemFonts: true`.
 
+### Embedded Fonts
+
+If a deck was saved with **"Embed fonts in the file"**, pptx-glimpse uses the embedded font files (`ppt/fonts/*.fntdata`) directly — no system install or mapping needed, and the output matches the original deck's fonts. Embedded fonts take precedence over system fonts of the same name. This is on by default; set `useEmbeddedFonts: false` to ignore them and use only system fonts + mapping.
+
+```typescript
+const results = await convertPptxToPng(pptx, { useEmbeddedFonts: true }); // default
+```
+
+Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). PowerPoint may embed a subset of glyphs ("embed only characters in use"), which is sufficient for re-rendering the same deck. Currently applies to the main text (SVG path) rendering.
+
 ### Font Mapping
 
 PPTX files often reference proprietary fonts (e.g., Calibri, Meiryo). pptx-glimpse maps these to open-source alternatives available on Google Fonts.

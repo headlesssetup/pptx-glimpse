@@ -5,6 +5,11 @@ export interface EmbeddedFont {
   panose?: string;
   pitchFamily?: number;
   charset?: number;
+  /** ppt/fonts/*.fntdata を指す関係 ID (各スタイルフェイス) */
+  regularRId?: string;
+  boldRId?: string;
+  italicRId?: string;
+  boldItalicRId?: string;
 }
 
 export interface Protection {

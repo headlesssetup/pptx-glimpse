@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 
+import { collectEmbeddedFontBuffers } from "./font/embedded-font-loader.js";
 import type { FontMapping } from "./font/font-mapping.js";
 import { createFontMapping } from "./font/font-mapping.js";
 import { resetFontMapping, setFontMapping } from "./font/font-mapping-context.js";
@@ -33,6 +34,12 @@ export interface ConvertOptions {
   /** true のとき OS のシステムフォントをスキャンせず fontDirs のみを使用する */
   skipSystemFonts?: boolean;
   /**
+   * PPTX に埋め込まれたフォント (ppt/fonts/*.fntdata) を描画に使用する。
+   * デフォルト true。埋め込みフォントは同名のシステムフォントより優先される。
+   * false にすると従来どおりシステムフォント + マッピングのみを使う。
+   */
+  useEmbeddedFonts?: boolean;
+  /**
    * true のとき、クリックで進行するアニメーション (entrance/exit) の各ステップを
    * 個別のフレームとして出力する。各スライドは最終状態ではなく、
    * ビルドステップごとに 1 件の結果 (stepIndex 付き) を生成する。
@@ -61,21 +68,29 @@ export async function convertPptxToSvg(
   input: Buffer | Uint8Array,
   options?: ConvertOptions,
 ): Promise<SlideSvg[]> {
-  const setup = await createOpentypeSetupFromSystem(
-    options?.fontDirs,
-    options?.fontMapping,
-    options?.skipSystemFonts,
-  );
-  if (setup) {
-    setTextMeasurer(setup.measurer);
-    setTextPathFontResolver(setup.fontResolver);
-  }
   setFontMapping(createFontMapping(options?.fontMapping));
   enableXmlCache();
   try {
     initWarningLogger(options?.logLevel ?? "off");
 
     const data = parsePptxData(input);
+
+    // PPTX に埋め込まれたフォントを抽出し、システムフォントより優先して使う。
+    // useEmbeddedFonts を明示的に false にした場合のみ無効化する。
+    const embeddedBuffers =
+      options?.useEmbeddedFonts === false ? [] : collectEmbeddedFontBuffers(data.archive);
+
+    const setup = await createOpentypeSetupFromSystem(
+      options?.fontDirs,
+      options?.fontMapping,
+      options?.skipSystemFonts,
+      embeddedBuffers,
+    );
+    if (setup) {
+      setTextMeasurer(setup.measurer);
+      setTextPathFontResolver(setup.fontResolver);
+    }
+
     setScriptFonts(data.theme.fontScheme.majorFontJpan, data.theme.fontScheme.minorFontJpan);
 
     // Filter slides if specified

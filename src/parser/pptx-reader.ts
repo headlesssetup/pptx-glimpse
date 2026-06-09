@@ -91,7 +91,8 @@ export function readPptx(input: Buffer | Uint8Array): PptxArchive {
 
   unzipSync(rawInput, {
     filter: (file) => {
-      if (file.name.startsWith("ppt/media/")) {
+      if (file.name.startsWith("ppt/media/") || file.name.startsWith("ppt/fonts/")) {
+        // ppt/fonts/*.fntdata は埋め込みフォントのバイナリ
         mediaEntryNames.add(file.name);
       } else if (
         file.name.endsWith(".xml") ||

@@ -85,9 +85,26 @@ function parseEmbeddedFontList(node: XmlNode | undefined): EmbeddedFont[] | unde
     if (fontNode["@_pitchFamily"] !== undefined)
       font.pitchFamily = Number(fontNode["@_pitchFamily"]);
     if (fontNode["@_charset"] !== undefined) font.charset = Number(fontNode["@_charset"]);
+
+    // 各スタイルスロット (<p:regular>/<p:bold>/<p:italic>/<p:boldItalic>) の r:id を取得
+    const regular = embeddedRId(f.regular as XmlNode | undefined);
+    const bold = embeddedRId(f.bold as XmlNode | undefined);
+    const italic = embeddedRId(f.italic as XmlNode | undefined);
+    const boldItalic = embeddedRId(f.boldItalic as XmlNode | undefined);
+    if (regular) font.regularRId = regular;
+    if (bold) font.boldRId = bold;
+    if (italic) font.italicRId = italic;
+    if (boldItalic) font.boldItalicRId = boldItalic;
+
     result.push(font);
   }
   return result.length > 0 ? result : undefined;
+}
+
+/** <p:regular r:id="..."/> 等から関係 ID を取り出す (r: プレフィックス有無の両対応) */
+function embeddedRId(node: XmlNode | undefined): string | undefined {
+  if (!node) return undefined;
+  return (node["@_r:id"] as string | undefined) ?? (node["@_id"] as string | undefined);
 }
 
 function parseProtection(node: XmlNode | undefined): Protection | undefined {
