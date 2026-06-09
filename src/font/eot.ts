@@ -76,3 +76,10 @@ export function extractFontFromEot(data: Uint8Array): Uint8Array | null {
   }
   return null;
 }
+
+/** 埋め込みフォントが MicroType Express 圧縮された EOT かどうか (未対応形式の判定用)。 */
+export function isMtxCompressedEot(data: Uint8Array): boolean {
+  if (data.length < 82) return false;
+  if (u16LE(data, 34) !== EOT_MAGIC) return false;
+  return (u32LE(data, 12) & TTEMBED_TTCOMPRESSED) !== 0;
+}

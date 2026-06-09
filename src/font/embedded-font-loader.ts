@@ -12,7 +12,8 @@ import {
   type Relationship,
   resolveRelationshipTarget,
 } from "../parser/relationship-parser.js";
-import { unwrapEmbeddedFontData } from "./eot.js";
+import { debug, warn } from "../warning-logger.js";
+import { isMtxCompressedEot, unwrapEmbeddedFontData } from "./eot.js";
 import type { FontBuffer } from "./opentype-helpers.js";
 
 /**
@@ -35,6 +36,8 @@ export function collectEmbeddedFontBuffers(archive: PptxArchive): FontBuffer[] {
   const rels = relsXml ? parseRelationships(relsXml) : new Map<string, Relationship>();
 
   const buffers: FontBuffer[] = [];
+  let attempted = 0;
+  let mtxSkipped = 0;
   for (const font of embeddedFonts) {
     if (!font.typeface) continue;
     const rIds = [font.regularRId, font.boldRId, font.italicRId, font.boldItalicRId];
@@ -45,12 +48,30 @@ export function collectEmbeddedFontBuffers(archive: PptxArchive): FontBuffer[] {
       const path = resolveRelationshipTarget("ppt/presentation.xml", rel.target);
       const raw = archive.media.get(path);
       if (!raw || raw.length === 0) continue;
+      attempted++;
       // .fntdata は EOT ラップされているため生フォントに正規化してから渡す
       const data = unwrapEmbeddedFontData(raw);
       if (data && data.length > 0) {
         buffers.push({ name: font.typeface, data });
+      } else if (isMtxCompressedEot(raw)) {
+        mtxSkipped++;
+        warn(
+          "font.embeddedCompressed",
+          `Embedded font "${font.typeface}" uses MicroType Express compression, which is not supported; falling back to system fonts.`,
+        );
+      } else {
+        warn(
+          "font.embeddedUndecodable",
+          `Embedded font "${font.typeface}" could not be decoded; falling back to system fonts.`,
+        );
       }
     }
   }
+
+  debug(
+    "font.embeddedLoaded",
+    `Embedded fonts: loaded ${buffers.length}/${attempted}` +
+      (mtxSkipped > 0 ? ` (${mtxSkipped} MicroType Express compressed, skipped)` : ""),
+  );
   return buffers;
 }
