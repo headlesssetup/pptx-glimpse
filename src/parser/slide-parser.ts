@@ -503,6 +503,9 @@ function parseShape(
   const ph = nvPr?.ph as XmlNode | undefined;
   const placeholderType = ph ? ((ph["@_type"] as string | undefined) ?? "body") : undefined;
   const placeholderIdx = ph?.["@_idx"] !== undefined ? Number(ph["@_idx"]) : undefined;
+  const cNvSpPr = nvSpPr?.cNvSpPr as XmlNode | undefined;
+  const txBoxAttr = cNvSpPr?.["@_txBox"];
+  const isTextBox = txBoxAttr === "1" || txBoxAttr === true || txBoxAttr === "true";
 
   // spPr が空/未定義の場合、プレースホルダーならコンテキストからフォールバック
   let transform: Transform | null = null;
@@ -585,6 +588,7 @@ function parseShape(
     effects,
     ...(placeholderType !== undefined && { placeholderType }),
     ...(placeholderIdx !== undefined && { placeholderIdx }),
+    ...(isTextBox && { isTextBox }),
     ...(altText && { altText }),
     ...(hyperlink && { hyperlink }),
   };

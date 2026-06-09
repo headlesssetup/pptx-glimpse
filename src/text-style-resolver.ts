@@ -56,12 +56,18 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
 
     // 段落 alignment の継承解決
     if (paragraph.properties.alignment === null) {
-      for (const source of chainSources) {
-        if (!source) continue;
-        const alignment = source.levels[level]?.alignment ?? source.defaultParagraph?.alignment;
-        if (alignment) {
-          paragraph.properties.alignment = alignment;
-          break;
+      // プレースホルダーでないテキストボックス (txBox="1") は PowerPoint では
+      // 既定で左揃え。マスターの otherStyle / defaultTextStyle が中央揃えでも
+      // 継承させない (autoshape やプレースホルダーは従来どおり継承する)。
+      const isPlainTextBox = shape.isTextBox && !shape.placeholderType;
+      if (!isPlainTextBox) {
+        for (const source of chainSources) {
+          if (!source) continue;
+          const alignment = source.levels[level]?.alignment ?? source.defaultParagraph?.alignment;
+          if (alignment) {
+            paragraph.properties.alignment = alignment;
+            break;
+          }
         }
       }
       // 継承チェーンでも見つからなければ左揃えにフォールバック

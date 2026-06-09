@@ -381,6 +381,47 @@ describe("applyTextStyleInheritance", () => {
       expect(shape.textBody!.paragraphs[0].properties.alignment).toBe("ctr");
     });
 
+    it("プレースホルダーでないテキストボックスは中央揃えの otherStyle を継承せず左揃えになる", () => {
+      // 実際のデッキ: txBox の本文が master otherStyle の中央揃えを拾ってしまう問題
+      const shape = makeShape({ isTextBox: true }); // placeholderType なし
+      shape.textBody!.paragraphs[0].properties.alignment = null;
+      const context = makeContext({
+        txStyles: {
+          otherStyle: { levels: [{ alignment: "ctr" }] },
+        },
+      });
+
+      applyTextStyleInheritance([shape], context);
+
+      expect(shape.textBody!.paragraphs[0].properties.alignment).toBe("l");
+    });
+
+    it("autoshape (非テキストボックス) は otherStyle の中央揃えを継承する", () => {
+      const shape = makeShape({}); // isTextBox なし、placeholderType なし
+      shape.textBody!.paragraphs[0].properties.alignment = null;
+      const context = makeContext({
+        txStyles: {
+          otherStyle: { levels: [{ alignment: "ctr" }] },
+        },
+      });
+
+      applyTextStyleInheritance([shape], context);
+
+      expect(shape.textBody!.paragraphs[0].properties.alignment).toBe("ctr");
+    });
+
+    it("テキストボックスでも段落に明示的な algn があればそれを尊重する", () => {
+      const shape = makeShape({ isTextBox: true });
+      shape.textBody!.paragraphs[0].properties.alignment = "ctr";
+      const context = makeContext({
+        txStyles: { otherStyle: { levels: [{ alignment: "l" }] } },
+      });
+
+      applyTextStyleInheritance([shape], context);
+
+      expect(shape.textBody!.paragraphs[0].properties.alignment).toBe("ctr");
+    });
+
     it("level に alignment がない場合 defaultParagraph から継承される", () => {
       const shape = makeShape({ placeholderType: "ctrTitle" });
       shape.textBody!.paragraphs[0].properties.alignment = null;

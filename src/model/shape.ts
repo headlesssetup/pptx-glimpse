@@ -45,6 +45,8 @@ export interface ShapeElement {
   effects: EffectList | null;
   placeholderType?: string;
   placeholderIdx?: number;
+  /** cNvSpPr/@txBox。テキストボックス (autoshape ではない) は既定で左揃え */
+  isTextBox?: boolean;
   altText?: string;
   hyperlink?: Hyperlink;
 }
