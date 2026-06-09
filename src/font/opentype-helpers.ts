@@ -9,7 +9,7 @@ import type { OpentypeFont } from "./opentype-text-measurer.js";
 import { OpentypeTextMeasurer } from "./opentype-text-measurer.js";
 import { collectFontFilePaths } from "./system-font-loader.js";
 import type { OpentypeFullFont, TextPathFontResolver } from "./text-path-context.js";
-import { DefaultTextPathFontResolver } from "./text-path-context.js";
+import { DefaultTextPathFontResolver, fontStyleKey } from "./text-path-context.js";
 import { extractTtcFonts, isTtcBuffer } from "./ttc-parser.js";
 
 /** フォントバッファの入力形式 */
@@ -22,7 +22,51 @@ interface OpentypeFontWithNames extends OpentypeFont {
   names: {
     fontFamily?: Record<string, string>;
     preferredFamily?: Record<string, string>;
+    fontSubfamily?: Record<string, string>;
+    preferredSubfamily?: Record<string, string>;
   };
+  tables?: {
+    os2?: { fsSelection?: number };
+    head?: { macStyle?: number };
+  };
+}
+
+interface FontFace {
+  bold: boolean;
+  italic: boolean;
+}
+
+// OS/2 fsSelection ビット
+const FS_ITALIC = 0x01;
+const FS_BOLD = 0x20;
+// head.macStyle ビット
+const MAC_BOLD = 0x01;
+const MAC_ITALIC = 0x02;
+
+/**
+ * フォントの太字/斜体フェイスを判定する。
+ * OS/2 fsSelection・head.macStyle・サブファミリ名の各シグナルを OR で統合する。
+ * 単一テーブルに頼らないのは、bold/italic ビットを設定し損ねているフォントや、
+ * 名前テーブルにしかスタイルを持たないフォントでも正しく判定するため。
+ */
+function getFontStyle(font: OpentypeFontWithNames): FontFace {
+  const fsSelection = font.tables?.os2?.fsSelection ?? 0;
+  const macStyle = font.tables?.head?.macStyle ?? 0;
+
+  const sub: string[] = [];
+  if (font.names.fontSubfamily) sub.push(...Object.values(font.names.fontSubfamily));
+  if (font.names.preferredSubfamily) sub.push(...Object.values(font.names.preferredSubfamily));
+  const joined = sub.join(" ").toLowerCase();
+
+  const bold =
+    (fsSelection & FS_BOLD) !== 0 ||
+    (macStyle & MAC_BOLD) !== 0 ||
+    /\b(bold|black|heavy)\b/.test(joined);
+  const italic =
+    (fsSelection & FS_ITALIC) !== 0 ||
+    (macStyle & MAC_ITALIC) !== 0 ||
+    /\b(italic|oblique)\b/.test(joined);
+  return { bold, italic };
 }
 
 /**
@@ -131,6 +175,7 @@ export async function createOpentypeSetupFromBuffers(
   const reverseMap = buildReverseMapping(mapping);
   const measurerFonts = new Map<string, OpentypeFont>();
   const resolverFonts = new Map<string, OpentypeFullFont>();
+  const plainRegular = new Set<string>();
   let firstMeasurerFont: OpentypeFont | null = null;
   let firstResolverFont: OpentypeFullFont | null = null;
 
@@ -144,13 +189,22 @@ export async function createOpentypeSetupFromBuffers(
         if (!firstMeasurerFont) firstMeasurerFont = font;
         if (!firstResolverFont) firstResolverFont = font as unknown as OpentypeFullFont;
 
+        const style = getFontStyle(font);
         if (isTtc) {
           // TTC: names テーブルからフォント名を取得して登録
           for (const name of collectFontNames(font)) {
-            registerFont(name, font, reverseMap, measurerFonts, resolverFonts);
+            registerFont(name, font, style, reverseMap, measurerFonts, resolverFonts, plainRegular);
           }
         } else if (buffer.name) {
-          registerFont(buffer.name, font, reverseMap, measurerFonts, resolverFonts);
+          registerFont(
+            buffer.name,
+            font,
+            style,
+            reverseMap,
+            measurerFonts,
+            resolverFonts,
+            plainRegular,
+          );
         }
       }
     } catch {
@@ -172,25 +226,56 @@ export async function createOpentypeSetupFromBuffers(
 function registerFont(
   name: string,
   font: OpentypeFontWithNames,
+  style: FontFace,
   reverseMap: Map<string, string[]>,
   measurerFonts: Map<string, OpentypeFont>,
   resolverFonts: Map<string, OpentypeFullFont>,
+  plainRegular: Set<string>,
 ): void {
-  const fullFont = font as unknown as OpentypeFullFont;
-  if (!measurerFonts.has(name)) {
-    measurerFonts.set(name, font);
-    resolverFonts.set(name, fullFont);
-  }
+  registerOne(name, font, style, measurerFonts, resolverFonts, plainRegular);
 
   // 逆引きで PPTX フォント名も登録
   const pptxNames = reverseMap.get(name);
   if (pptxNames) {
     for (const pptxName of pptxNames) {
-      if (!measurerFonts.has(pptxName)) {
-        measurerFonts.set(pptxName, font);
-        resolverFonts.set(pptxName, fullFont);
-      }
+      registerOne(pptxName, font, style, measurerFonts, resolverFonts, plainRegular);
     }
+  }
+}
+
+/**
+ * 1 つのフォント名についてスタイル修飾キー + 素のファミリ名キーを登録する。
+ * - 太字/斜体フェイスは "Family bi" 形式の修飾キーに登録 (先勝ち)。
+ * - 素のファミリ名キーは Regular フェイスを優先する。先に非 Regular で
+ *   暫定登録されていても、後から Regular が来たら上書きする。これにより
+ *   ディレクトリの走査順 (アルファベット順で Bold Italic が先に来る等) に
+ *   左右されず、通常テキストが必ず Regular フェイスで描画される。
+ */
+function registerOne(
+  name: string,
+  font: OpentypeFontWithNames,
+  style: FontFace,
+  measurerFonts: Map<string, OpentypeFont>,
+  resolverFonts: Map<string, OpentypeFullFont>,
+  plainRegular: Set<string>,
+): void {
+  const fullFont = font as unknown as OpentypeFullFont;
+  const isRegular = !style.bold && !style.italic;
+
+  if (!isRegular) {
+    const key = fontStyleKey(name, style.bold, style.italic);
+    if (!measurerFonts.has(key)) {
+      measurerFonts.set(key, font);
+      resolverFonts.set(key, fullFont);
+    }
+  }
+
+  const plainUnset = !measurerFonts.has(name);
+  const plainUpgrade = isRegular && !plainRegular.has(name);
+  if (plainUnset || plainUpgrade) {
+    measurerFonts.set(name, font);
+    resolverFonts.set(name, fullFont);
+    if (isRegular) plainRegular.add(name);
   }
 }
 
@@ -274,6 +359,7 @@ export async function createOpentypeSetupFromSystem(
   const reverseMap = buildReverseMapping(mapping);
   const measurerFonts = new Map<string, OpentypeFont>();
   const resolverFonts = new Map<string, OpentypeFullFont>();
+  const plainRegular = new Set<string>();
   let firstMeasurerFont: OpentypeFont | null = null;
   let firstResolverFont: OpentypeFullFont | null = null;
 
@@ -287,9 +373,10 @@ export async function createOpentypeSetupFromSystem(
         if (!firstMeasurerFont) firstMeasurerFont = font;
         if (!firstResolverFont) firstResolverFont = font as unknown as OpentypeFullFont;
 
+        const style = getFontStyle(font);
         // names テーブルからフォント名を取得して登録
         for (const name of collectFontNames(font)) {
-          registerFont(name, font, reverseMap, measurerFonts, resolverFonts);
+          registerFont(name, font, style, reverseMap, measurerFonts, resolverFonts, plainRegular);
         }
       }
     } catch {

@@ -84,7 +84,9 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   rightArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * h;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * w;
+    // PowerPoint scales the arrowhead length by the shorter side (ss = min(w,h)),
+    // not the width — otherwise wide arrows get an oversized, blunt head.
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), w);
     const bodyTop = (h - headWidth) / 2;
     const bodyBottom = h - bodyTop;
     const shaftEnd = w - headLength;
@@ -93,7 +95,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   leftArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * h;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * w;
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), w);
     const bodyTop = (h - headWidth) / 2;
     const bodyBottom = h - bodyTop;
     return `<polygon points="${headLength},${bodyTop} ${headLength},0 0,${h / 2} ${headLength},${h} ${headLength},${bodyBottom} ${w},${bodyBottom} ${w},${bodyTop}"/>`;
@@ -101,7 +103,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   upArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * w;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * h;
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), h);
     const bodyLeft = (w - headWidth) / 2;
     const bodyRight = w - bodyLeft;
     return `<polygon points="${bodyLeft},${headLength} 0,${headLength} ${w / 2},0 ${w},${headLength} ${bodyRight},${headLength} ${bodyRight},${h} ${bodyLeft},${h}"/>`;
@@ -109,7 +111,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   downArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * w;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * h;
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), h);
     const bodyLeft = (w - headWidth) / 2;
     const bodyRight = w - bodyLeft;
     const shaftEnd = h - headLength;
@@ -213,7 +215,8 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   leftRightArrow: (w, h, adj) => {
     const headW = ((adj["adj1"] ?? 50000) / 100000) * h;
-    const headL = ((adj["adj2"] ?? 50000) / 100000) * w;
+    // Two heads share the width, so cap each at half the width.
+    const headL = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), w / 2);
     const bodyTop = (h - headW) / 2;
     const bodyBot = h - bodyTop;
     return `<polygon points="${headL},${bodyTop} ${headL},0 0,${h / 2} ${headL},${h} ${headL},${bodyBot} ${w - headL},${bodyBot} ${w - headL},${h} ${w},${h / 2} ${w - headL},0 ${w - headL},${bodyTop}"/>`;
@@ -221,7 +224,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   upDownArrow: (w, h, adj) => {
     const headW = ((adj["adj1"] ?? 50000) / 100000) * w;
-    const headL = ((adj["adj2"] ?? 50000) / 100000) * h;
+    const headL = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), h / 2);
     const bodyL = (w - headW) / 2;
     const bodyR = w - bodyL;
     return `<polygon points="${bodyL},${headL} 0,${headL} ${w / 2},0 ${w},${headL} ${bodyR},${headL} ${bodyR},${h - headL} ${w},${h - headL} ${w / 2},${h} 0,${h - headL} ${bodyL},${h - headL}"/>`;
@@ -229,7 +232,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   notchedRightArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * h;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * w;
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), w);
     const bodyTop = (h - headWidth) / 2;
     const bodyBottom = h - bodyTop;
     const shaftEnd = w - headLength;
@@ -239,7 +242,7 @@ const presetGeometries: Record<string, GeometryGenerator> = {
 
   stripedRightArrow: (w, h, adj) => {
     const headWidth = ((adj["adj1"] ?? 50000) / 100000) * h;
-    const headLength = ((adj["adj2"] ?? 50000) / 100000) * w;
+    const headLength = Math.min(((adj["adj2"] ?? 50000) / 100000) * Math.min(w, h), w);
     const bodyTop = (h - headWidth) / 2;
     const bodyBottom = h - bodyTop;
     const shaftEnd = w - headLength;

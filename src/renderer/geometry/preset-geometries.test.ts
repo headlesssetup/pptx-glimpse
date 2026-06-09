@@ -86,6 +86,21 @@ describe("getPresetGeometrySvg", () => {
     expect(svg).toContain("<polygon");
   });
 
+  it("scales rightArrow head length by the shorter side, not the width", () => {
+    // Wide arrow: w=400, h=100. headLength = 0.5*min(w,h) = 50, so shaftEnd = 350
+    // and bodyTop = (100-50)/2 = 25. The old bug used 0.5*w = 200 (too blunt).
+    const svg = getPresetGeometrySvg("rightArrow", 400, 100, {});
+    expect(svg).toContain("350,25"); // shaft top corner at the head
+    expect(svg).toContain("400,50"); // tip at full width, vertical center
+    expect(svg).not.toContain("200,0"); // old buggy shaftEnd would have been 200
+  });
+
+  it("respects adj2 for rightArrow head length", () => {
+    // adj2=25000 -> head length 0.25*min(400,100)=25 -> shaftEnd at 375
+    const svg = getPresetGeometrySvg("rightArrow", 400, 100, { adj2: 25000 });
+    expect(svg).toContain("375,");
+  });
+
   it("falls back to rect for unknown preset", () => {
     const svg = getPresetGeometrySvg("unknownShape", 100, 50, {});
     expect(svg).toBe('<rect width="100" height="50"/>');

@@ -62,6 +62,96 @@ async function createTestFontBuffer(familyName: string): Promise<ArrayBuffer> {
   return font.toArrayBuffer();
 }
 
+/**
+ * styleName と 'A' の advanceWidth を指定してフォントバッファを作る。
+ * advanceWidth を面ごとに変えることで、解決されたフェイスを幅で識別できる。
+ */
+async function createStyledFontBuffer(
+  familyName: string,
+  styleName: string,
+  advanceWidthA: number,
+): Promise<ArrayBuffer> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const opentype: {
+    Glyph: new (opts: Record<string, unknown>) => unknown;
+    Path: new () => {
+      moveTo(x: number, y: number): void;
+      lineTo(x: number, y: number): void;
+      close(): void;
+    };
+    Font: new (opts: Record<string, unknown>) => { toArrayBuffer(): ArrayBuffer };
+  } = await import("opentype.js");
+
+  const notdef = new opentype.Glyph({
+    name: ".notdef",
+    unicode: 0,
+    advanceWidth: 650,
+    path: new opentype.Path(),
+  });
+  const pathA = new opentype.Path();
+  pathA.moveTo(0, 0);
+  pathA.lineTo(300, 800);
+  pathA.lineTo(600, 0);
+  pathA.close();
+  const glyphA = new opentype.Glyph({
+    name: "A",
+    unicode: 65,
+    advanceWidth: advanceWidthA,
+    path: pathA,
+  });
+
+  const font = new opentype.Font({
+    familyName,
+    styleName,
+    unitsPerEm: 1000,
+    ascender: 800,
+    descender: -200,
+    glyphs: [notdef, glyphA],
+  });
+  return font.toArrayBuffer();
+}
+
+describe("太字/斜体フェイス選択", () => {
+  it("Regular フェイスは登録順に関わらず素のファミリ名で解決される", async () => {
+    const boldItalic = await createStyledFontBuffer("Arial", "Bold Italic", 900);
+    const bold = await createStyledFontBuffer("Arial", "Bold", 700);
+    const italic = await createStyledFontBuffer("Arial", "Italic", 800);
+    const regular = await createStyledFontBuffer("Arial", "Regular", 600);
+
+    // あえて Bold Italic を先頭にして「先勝ち」では誤って選ばれる順序にする
+    const setup = await createOpentypeSetupFromBuffers([
+      { name: "Arial", data: boldItalic },
+      { name: "Arial", data: bold },
+      { name: "Arial", data: italic },
+      { name: "Arial", data: regular },
+    ]);
+    expect(setup).not.toBeNull();
+    const r = setup!.fontResolver;
+
+    // 通常テキスト → Regular フェイス (advanceWidth 600)
+    expect(r.resolveFont("Arial", null)!.getAdvanceWidth("A", 1000)).toBeCloseTo(600, 0);
+    // 太字 → Bold (700), 斜体 → Italic (800), 太字斜体 → Bold Italic (900)
+    expect(
+      r.resolveFont("Arial", null, null, { bold: true })!.getAdvanceWidth("A", 1000),
+    ).toBeCloseTo(700, 0);
+    expect(
+      r.resolveFont("Arial", null, null, { italic: true })!.getAdvanceWidth("A", 1000),
+    ).toBeCloseTo(800, 0);
+    expect(
+      r.resolveFont("Arial", null, null, { bold: true, italic: true })!.getAdvanceWidth("A", 1000),
+    ).toBeCloseTo(900, 0);
+  });
+
+  it("太字フェイスが無ければ Regular にフォールバックする", async () => {
+    const regular = await createStyledFontBuffer("Solo", "Regular", 600);
+    const setup = await createOpentypeSetupFromBuffers([{ name: "Solo", data: regular }]);
+    const r = setup!.fontResolver;
+    expect(
+      r.resolveFont("Solo", null, null, { bold: true })!.getAdvanceWidth("A", 1000),
+    ).toBeCloseTo(600, 0);
+  });
+});
+
 describe("createOpentypeTextMeasurerFromBuffers", () => {
   it("空配列で null を返す", async () => {
     const result = await createOpentypeTextMeasurerFromBuffers([]);

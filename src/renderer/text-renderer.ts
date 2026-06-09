@@ -925,6 +925,7 @@ function measureLineWidth(
         seg.properties.fontFamily,
         seg.properties.fontFamilyEa,
         jpanFallback,
+        { bold: seg.properties.bold, italic: seg.properties.italic },
       );
       if (font) {
         totalWidth += font.getAdvanceWidth(seg.text, fontSizePx);
@@ -1027,7 +1028,10 @@ function renderSegmentAsPath(
   ) => {
     if (segText.length === 0) return;
 
-    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback);
+    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback, {
+      bold: props.bold,
+      italic: props.italic,
+    });
     const segWidth = font
       ? font.getAdvanceWidth(segText, fontSizePx)
       : getTextMeasurer().measureTextWidth(
@@ -1068,7 +1072,10 @@ function renderSegmentAsPath(
   ) => {
     if (segText.length === 0) return;
 
-    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback);
+    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback, {
+      bold: props.bold,
+      italic: props.italic,
+    });
     const fillAttrs = buildPathFillAttrs(props);
 
     for (const char of segText) {

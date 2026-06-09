@@ -5,6 +5,8 @@ import { resetFontMapping, setFontMapping } from "./font-mapping-context.js";
 import type { OpentypeFullFont } from "./text-path-context.js";
 import {
   DefaultTextPathFontResolver,
+  fontStyleKey,
+  fontStyleVariants,
   getTextPathFontResolver,
   resetTextPathFontResolver,
   setTextPathFontResolver,
@@ -80,6 +82,75 @@ describe("DefaultTextPathFontResolver", () => {
     const fonts = new Map([["Noto Sans JP", notoFont]]);
     const resolver = new DefaultTextPathFontResolver(fonts);
     expect(resolver.resolveFont(null, "Noto Sans JP")).toBe(notoFont);
+  });
+});
+
+describe("fontStyleKey / fontStyleVariants", () => {
+  it("Regular はファミリ名そのもの", () => {
+    expect(fontStyleKey("Arial", false, false)).toBe("Arial");
+  });
+
+  it("太字/斜体はサフィックス付き", () => {
+    expect(fontStyleKey("Arial", true, false)).toBe("Arial b");
+    expect(fontStyleKey("Arial", false, true)).toBe("Arial i");
+    expect(fontStyleKey("Arial", true, true)).toBe("Arial bi");
+  });
+
+  it("優先順は 完全一致 → 太字 → 斜体 → Regular", () => {
+    expect(fontStyleVariants(true, true)).toEqual([
+      [true, true],
+      [true, false],
+      [false, true],
+      [false, false],
+    ]);
+    expect(fontStyleVariants(false, false)).toEqual([[false, false]]);
+  });
+});
+
+describe("DefaultTextPathFontResolver 太字/斜体フェイス選択", () => {
+  function buildResolver() {
+    const regular = createMockFont("Arial-Regular");
+    const bold = createMockFont("Arial-Bold");
+    const italic = createMockFont("Arial-Italic");
+    const boldItalic = createMockFont("Arial-BoldItalic");
+    const fonts = new Map<string, OpentypeFullFont>([
+      [fontStyleKey("Arial", false, false), regular],
+      [fontStyleKey("Arial", true, false), bold],
+      [fontStyleKey("Arial", false, true), italic],
+      [fontStyleKey("Arial", true, true), boldItalic],
+    ]);
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    return { resolver, regular, bold, italic, boldItalic };
+  }
+
+  it("通常テキストは Regular フェイス", () => {
+    const { resolver, regular } = buildResolver();
+    expect(resolver.resolveFont("Arial", null)).toBe(regular);
+    expect(resolver.resolveFont("Arial", null, null, {})).toBe(regular);
+  });
+
+  it("太字・斜体・太字斜体で対応フェイスを返す", () => {
+    const { resolver, bold, italic, boldItalic } = buildResolver();
+    expect(resolver.resolveFont("Arial", null, null, { bold: true })).toBe(bold);
+    expect(resolver.resolveFont("Arial", null, null, { italic: true })).toBe(italic);
+    expect(resolver.resolveFont("Arial", null, null, { bold: true, italic: true })).toBe(
+      boldItalic,
+    );
+  });
+
+  it("対応フェイスが無ければ近いフェイスにフォールバックする", () => {
+    const regular = createMockFont("Reg");
+    const bold = createMockFont("Bold");
+    // Italic / BoldItalic フェイスは登録しない
+    const fonts = new Map<string, OpentypeFullFont>([
+      [fontStyleKey("Arial", false, false), regular],
+      [fontStyleKey("Arial", true, false), bold],
+    ]);
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    // 太字斜体 → 太字 にフォールバック
+    expect(resolver.resolveFont("Arial", null, null, { bold: true, italic: true })).toBe(bold);
+    // 斜体のみ → Regular にフォールバック
+    expect(resolver.resolveFont("Arial", null, null, { italic: true })).toBe(regular);
   });
 });
 
