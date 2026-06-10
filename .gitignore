@@ -1,6 +1,5 @@
 node_modules/
 dist/
-*.png
 samples/
 *.tgz
 .DS_Store
