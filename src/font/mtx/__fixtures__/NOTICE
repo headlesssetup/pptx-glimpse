@@ -1,0 +1,14 @@
+Test fixtures — third-party font data notice
+============================================
+
+`figtree-subset.fntdata` is a MicroType Express–compressed, subsetted EOT
+embedding of the **Figtree** typeface, extracted from a PowerPoint deck and used
+here only as a decode test vector.
+
+  Figtree — Copyright 2022 The Figtree Project Authors
+  https://github.com/erikdkennedy/figtree
+  Licensed under the SIL Open Font License, Version 1.1
+  https://openfontlicense.org
+
+The OFL permits redistribution of the font data; this fixture and the TTF the
+decoder produces from it remain under the OFL.

@@ -57,7 +57,7 @@ export function collectEmbeddedFontBuffers(archive: PptxArchive): FontBuffer[] {
         mtxSkipped++;
         warn(
           "font.embeddedCompressed",
-          `Embedded font "${font.typeface}" uses MicroType Express compression, which is not supported; falling back to system fonts.`,
+          `Embedded font "${font.typeface}" is MicroType Express compressed and could not be decoded; falling back to system fonts.`,
         );
       } else {
         warn(

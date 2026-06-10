@@ -191,7 +191,7 @@ If a deck was saved with **"Embed fonts in the file"**, pptx-glimpse uses the em
 const results = await convertPptxToPng(pptx, { useEmbeddedFonts: true }); // default
 ```
 
-Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). PowerPoint may embed a subset of glyphs ("embed only characters in use"), which is sufficient for re-rendering the same deck. Currently applies to the main text (SVG path) rendering.
+PowerPoint wraps embedded fonts in the EOT container and compresses them with **MicroType Express** (the default); pptx-glimpse decodes both, including subsetted ("embed only characters in use") fonts. Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). Currently applies to the main text (SVG path) rendering.
 
 ### Font Mapping
 

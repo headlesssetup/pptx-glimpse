@@ -1,0 +1,24 @@
+MicroType Express (MTX) decoder — third-party code notice
+=========================================================
+
+The font decompressor in this directory (`src/font/mtx/`) is a TypeScript port
+of the MTX / lzcomp decoder from **libeot**:
+
+    https://github.com/umanwizard/libeot
+    Copyright (c) 2013 Brennan T. Vincent
+    Licensed under the Mozilla Public License, version 2.0 (MPL-2.0)
+
+Most of libeot's `src/lzcomp` code was originally published by **Monotype
+Imaging** under the MTX License and relicensed by libeot's author under
+MPL-2.0. As a derivative work, the files in this directory are likewise made
+available under the MPL-2.0; each file carries an MPL-2.0 header.
+
+PATENTS
+-------
+MicroType Express makes use of information patented by **Microsoft** and
+**Monotype Imaging**. The EOT format (which embeds MTX) was submitted to the
+W3C; see https://www.w3.org/Submission/2008/01/ for the associated patent
+statements. This code is provided without any warranty, and users/distributors
+are responsible for verifying that their use complies with all applicable
+patent and other intellectual-property law in their jurisdiction. See the
+upstream libeot `PATENTS` file for the original author's statement.

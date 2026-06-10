@@ -12,6 +12,8 @@
  *   34 MagicNumber  USHORT == 0x504C
  */
 
+import { decodeMtx } from "./mtx/index.js";
+
 // sfnt フォント署名 (ビッグエンディアン uint32)
 const SIG_TTF = 0x00010000; // 00 01 00 00
 const SIG_OTTO = 0x4f54544f; // "OTTO"
@@ -19,7 +21,7 @@ const SIG_TRUE = 0x74727565; // "true"
 const SIG_TTCF = 0x74746366; // "ttcf"
 
 const EOT_MAGIC = 0x504c;
-const TTEMBED_TTCOMPRESSED = 0x00000004; // MicroType Express 圧縮 (未対応)
+const TTEMBED_TTCOMPRESSED = 0x00000004; // MicroType Express 圧縮
 const TTEMBED_XORENCRYPTDATA = 0x10000000; // フォントデータが 0x50 で XOR 暗号化
 const EOT_XOR_KEY = 0x50;
 
@@ -57,22 +59,31 @@ export function extractFontFromEot(data: Uint8Array): Uint8Array | null {
   if (data.length < 82) return null;
   if (u16LE(data, 34) !== EOT_MAGIC) return null;
 
+  const eotSize = u32LE(data, 0);
   const fontDataSize = u32LE(data, 4);
   const flags = u32LE(data, 12);
-
-  if (flags & TTEMBED_TTCOMPRESSED) return null; // MicroType Express 圧縮は未対応
   if (fontDataSize === 0 || fontDataSize > data.length) return null;
 
   const xor = (flags & TTEMBED_XORENCRYPTDATA) !== 0;
+  const compressed = (flags & TTEMBED_TTCOMPRESSED) !== 0;
 
-  // フォントデータは通常ファイル末尾に置かれる。末尾基準で取り出し、
-  // 署名が合わなければ EOTSize 基準のオフセットも試す。
-  const candidates = [data.length - fontDataSize, u32LE(data, 0) - fontDataSize];
+  // フォントデータは通常ファイル末尾に置かれる。EOTSize 基準を優先しつつ末尾基準も試す。
+  const candidates = [eotSize - fontDataSize, data.length - fontDataSize];
   for (const start of candidates) {
     if (start < 0 || start + fontDataSize > data.length) continue;
-    let out = data.slice(start, start + fontDataSize);
-    if (xor) out = out.map((b) => b ^ EOT_XOR_KEY);
-    if (isFontSignature(out)) return out;
+    let payload = data.slice(start, start + fontDataSize);
+    if (xor) payload = payload.map((b) => b ^ EOT_XOR_KEY);
+    if (compressed) {
+      // MicroType Express 圧縮 → 展開して生フォントを得る
+      try {
+        const ttf = decodeMtx(payload);
+        if (isFontSignature(ttf)) return ttf;
+      } catch {
+        // 展開失敗 → 次の候補へ
+      }
+    } else if (isFontSignature(payload)) {
+      return payload;
+    }
   }
   return null;
 }
