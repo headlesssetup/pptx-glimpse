@@ -193,6 +193,21 @@ const results = await convertPptxToPng(pptx, { useEmbeddedFonts: true }); // def
 
 PowerPoint wraps embedded fonts in the EOT container and compresses them with **MicroType Express** (the default); pptx-glimpse decodes both, including subsetted ("embed only characters in use") fonts. Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). Currently applies to the main text (SVG path) rendering.
 
+### Using the Genuine Fonts
+
+Font mapping and glyph fallback are last resorts. Whenever the deck's actual font is available, pptx-glimpse uses it directly by name — including the correct bold/italic face — and neither mapping nor fallback applies. Microsoft's built-in PowerPoint fonts (Aptos, Calibri, Corbel, …) are proprietary and cannot be bundled with this library, but there are two supported ways to render with the real thing:
+
+1. **Embed the fonts in the deck** — in PowerPoint: File → Options → Save → "Embed fonts in the file". The fonts travel inside the .pptx and pptx-glimpse uses them automatically with no server setup (EOT and MicroType Express compression are decoded transparently).
+2. **Provide the fonts on the render host** — install them system-wide or pass their directory via `fontDirs`. Microsoft distributes the Aptos family as a free download, and fonts from a licensed Windows/Office installation may be usable subject to their license terms.
+
+```typescript
+const results = await convertPptxToPng(pptx, {
+  fontDirs: ["/srv/fonts/microsoft"],
+});
+```
+
+The bundled demo app additionally honors the `PPTX_GLIMPSE_FONT_DIRS` environment variable (path-delimiter separated) and a `fonts/` directory in the demo app root.
+
 ### Glyph Fallback
 
 If the resolved font is missing glyphs for some characters (e.g., Latvian ļ/ē/ā in a font that only covers Western European Latin), pptx-glimpse automatically falls back — per text run — to another available font that covers those characters instead of rendering .notdef boxes. Fallback is deterministic: embedded fonts are tried first, then well-known families (Carlito, Arimo, Liberation Sans, Noto Sans, DejaVu Sans, …) before other scanned fonts, and all runs stay within one family with the matching bold/italic face where possible. The same preferred order supplies the substitute when a deck's font is neither installed nor mapped, so bold/italic styling is kept even for unknown fonts. A `font.missingGlyphs` warning is logged (visible with `logLevel: "warn"`).

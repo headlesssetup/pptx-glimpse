@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { convertPptxToSvg } from "pptx-glimpse";
+import { delimiter, resolve } from "path";
+
+/**
+ * Directories with real fonts (e.g. Aptos, Calibri from a licensed Office
+ * install) can be supplied via PPTX_GLIMPSE_FONT_DIRS (path-delimiter
+ * separated). Fonts found there are used by name, taking precedence over
+ * the built-in OSS font mapping. A `fonts/` directory next to the demo app
+ * is picked up automatically when present.
+ */
+function getFontDirs(): string[] | undefined {
+  const dirs: string[] = [];
+  const env = process.env.PPTX_GLIMPSE_FONT_DIRS;
+  if (env) {
+    dirs.push(...env.split(delimiter).filter(Boolean));
+  }
+  dirs.push(resolve(process.cwd(), "fonts"));
+  return dirs.length > 0 ? dirs : undefined;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +32,10 @@ export async function POST(request: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-    const slides = await convertPptxToSvg(uint8Array, { animationSteps });
+    const slides = await convertPptxToSvg(uint8Array, {
+      animationSteps,
+      fontDirs: getFontDirs(),
+    });
 
     if (slides.length === 0) {
       return NextResponse.json({ error: "No slides found in the uploaded file" }, { status: 400 });

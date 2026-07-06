@@ -424,3 +424,34 @@ describe("orderFallbackPool", () => {
     ]);
   });
 });
+
+describe("実フォント優先", () => {
+  afterEach(() => {
+    resetFontMapping();
+  });
+
+  it("実フォントがインストールされていればマッピングより優先される", () => {
+    // Aptos → Carlito のマッピングがあっても、本物の Aptos があればそれを使う
+    const aptos = createMockFont("Aptos");
+    const carlito = createMockFont("Carlito");
+    const fonts = new Map([
+      ["Aptos", aptos],
+      ["Carlito", carlito],
+    ]);
+    setFontMapping({ Aptos: "Carlito" });
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    expect(resolver.resolveFont("Aptos", null)).toBe(aptos);
+  });
+
+  it("実フォントの Bold フェイスもマッピングより優先される", () => {
+    const aptosBold = createMockFont("Aptos-Bold");
+    const carlito = createMockFont("Carlito");
+    const fonts = new Map([
+      [fontStyleKey("Aptos", true, false), aptosBold],
+      ["Carlito", carlito],
+    ]);
+    setFontMapping({ Aptos: "Carlito" });
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    expect(resolver.resolveFont("Aptos", null, null, { bold: true })).toBe(aptosBold);
+  });
+});
