@@ -11,6 +11,15 @@ export const DEFAULT_FONT_MAPPING: Readonly<FontMapping> = {
   // ラテン文字フォント
   Calibri: "Carlito",
   "Calibri Light": "Carlito",
+  // Aptos は Office 2024+ のデフォルトフォント (Calibri の後継)。
+  // 専用のメトリック互換 OSS フォントが無いため Calibri と同じ Carlito に寄せる。
+  Aptos: "Carlito",
+  "Aptos Display": "Carlito",
+  "Aptos Narrow": "Carlito",
+  "Aptos Light": "Carlito",
+  "Aptos SemiBold": "Carlito",
+  Corbel: "Carlito",
+  "Corbel Light": "Carlito",
   Arial: "Arimo",
   "Times New Roman": "Tinos",
   "Courier New": "Cousine",
@@ -23,7 +32,9 @@ export const DEFAULT_FONT_MAPPING: Readonly<FontMapping> = {
   メイリオ: "Noto Sans JP",
   Meiryo: "Noto Sans JP",
   游ゴシック: "Noto Sans JP",
+  "游ゴシック Light": "Noto Sans JP",
   "Yu Gothic": "Noto Sans JP",
+  "Yu Gothic Light": "Noto Sans JP",
   "MS ゴシック": "Noto Sans JP",
   "MS Gothic": "Noto Sans JP",
   "MS Pゴシック": "Noto Sans JP",

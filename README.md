@@ -195,7 +195,7 @@ PowerPoint wraps embedded fonts in the EOT container and compresses them with **
 
 ### Glyph Fallback
 
-If the resolved font is missing glyphs for some characters (e.g., Latvian ļ/ē/ā in a font that only covers Western European Latin), pptx-glimpse automatically falls back — per text run — to another available font that covers those characters instead of rendering .notdef boxes. Embedded fonts are preferred, and a matching bold/italic face is chosen when available. A `font.missingGlyphs` warning is logged (visible with `logLevel: "warn"`).
+If the resolved font is missing glyphs for some characters (e.g., Latvian ļ/ē/ā in a font that only covers Western European Latin), pptx-glimpse automatically falls back — per text run — to another available font that covers those characters instead of rendering .notdef boxes. Fallback is deterministic: embedded fonts are tried first, then well-known families (Carlito, Arimo, Liberation Sans, Noto Sans, DejaVu Sans, …) before other scanned fonts, and all runs stay within one family with the matching bold/italic face where possible. The same preferred order supplies the substitute when a deck's font is neither installed nor mapped, so bold/italic styling is kept even for unknown fonts. A `font.missingGlyphs` warning is logged (visible with `logLevel: "warn"`).
 
 ### Font Mapping
 
@@ -206,6 +206,8 @@ Default mapping:
 | PPTX Font                           | Mapped to     |
 | ----------------------------------- | ------------- |
 | Calibri                             | Carlito       |
+| Aptos (Office 2024+ default)        | Carlito       |
+| Corbel                              | Carlito       |
 | Arial                               | Arimo         |
 | Times New Roman                     | Tinos         |
 | Courier New                         | Cousine       |

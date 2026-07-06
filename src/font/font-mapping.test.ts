@@ -95,3 +95,15 @@ describe("getMappedFont", () => {
     expect(getMappedFont("ＭＳ\u3000Ｐゴシック", fullMapping)).toBe("Noto Sans JP");
   });
 });
+
+describe("Aptos / Corbel マッピング", () => {
+  it("Aptos ファミリを Carlito にマッピングする", () => {
+    expect(getMappedFont("Aptos", DEFAULT_FONT_MAPPING)).toBe("Carlito");
+    expect(getMappedFont("Aptos Display", DEFAULT_FONT_MAPPING)).toBe("Carlito");
+    expect(getMappedFont("Corbel Light", DEFAULT_FONT_MAPPING)).toBe("Carlito");
+  });
+
+  it("游ゴシック Light を Noto Sans JP にマッピングする", () => {
+    expect(getMappedFont("游ゴシック Light", DEFAULT_FONT_MAPPING)).toBe("Noto Sans JP");
+  });
+});

@@ -36,6 +36,59 @@ export interface FallbackFace {
   bold: boolean;
   italic: boolean;
   font: OpentypeFullFont;
+  /** PPTX 埋め込みフォント・ユーザー指定バッファ由来 (システムスキャンより優先) */
+  embedded?: boolean;
+}
+
+/**
+ * フォールバック時に優先するフォントファミリ (優先順)。
+ * 任意のスキャン順ではなく、広いグリフカバレッジと Office フォントに近い
+ * 見た目を持つ定番フォントへ決定的にフォールバックさせる。
+ */
+const PREFERRED_FALLBACK_FAMILIES = [
+  "Carlito",
+  "Arimo",
+  "Liberation Sans",
+  "Noto Sans",
+  "DejaVu Sans",
+  "FreeSans",
+  "Helvetica",
+  "Arial",
+];
+
+/**
+ * フォールバックプールをファミリ単位で並べ替える。
+ * 優先順: 埋め込みフォント (登録順) → PREFERRED_FALLBACK_FAMILIES (リスト順) →
+ * その他 (登録順)。同一ファミリのフェイスは隣接して保持される。
+ */
+export function orderFallbackPool(pool: FallbackFace[]): FallbackFace[] {
+  const byFamily = new Map<string, FallbackFace[]>();
+  for (const face of pool) {
+    const faces = byFamily.get(face.name);
+    if (faces) faces.push(face);
+    else byFamily.set(face.name, [face]);
+  }
+
+  const ordered: FallbackFace[] = [];
+  const used = new Set<string>();
+  const pushFamily = (name: string) => {
+    if (used.has(name)) return;
+    const faces = byFamily.get(name);
+    if (!faces) return;
+    used.add(name);
+    ordered.push(...faces);
+  };
+
+  for (const face of pool) {
+    if (face.embedded) pushFamily(face.name);
+  }
+  for (const name of PREFERRED_FALLBACK_FAMILIES) {
+    pushFamily(name);
+  }
+  for (const face of pool) {
+    pushFamily(face.name);
+  }
+  return ordered;
 }
 
 /**
@@ -106,7 +159,8 @@ const COVERAGE_CACHE_LIMIT = 1000;
 export class DefaultTextPathFontResolver implements TextPathFontResolver {
   private fonts: Map<string, OpentypeFullFont>;
   private defaultFont: OpentypeFullFont | null;
-  private fallbackPool: FallbackFace[];
+  /** ファミリ単位にグループ化したフォールバック候補 (優先順) */
+  private familyPool: FallbackFace[][];
   private warnedFonts = new Set<string>();
   private warnedGlyphs = new Set<string>();
   private coverageCache = new Map<string, FallbackFace | null>();
@@ -118,7 +172,19 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
   ) {
     this.fonts = fonts;
     this.defaultFont = defaultFont ?? null;
-    this.fallbackPool = fallbackPool ?? [];
+
+    const ordered = orderFallbackPool(fallbackPool ?? []);
+    this.familyPool = [];
+    const byName = new Map<string, FallbackFace[]>();
+    for (const face of ordered) {
+      let faces = byName.get(face.name);
+      if (!faces) {
+        faces = [];
+        byName.set(face.name, faces);
+        this.familyPool.push(faces);
+      }
+      faces.push(face);
+    }
   }
 
   resolveFont(
@@ -131,46 +197,56 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
     const bold = style?.bold ?? false;
     const italic = style?.italic ?? false;
 
-    // 従来と同じ優先順で候補を収集する
-    const candidates: OpentypeFullFont[] = [];
-    let namedFound = false;
+    // 従来と同じ優先順で名前解決の候補を収集する
+    const named: OpentypeFullFont[] = [];
     for (const name of [fontFamily, fontFamilyEa, jpanFallback]) {
       if (!name) continue;
-      const found = this.findFontCandidates(name, bold, italic);
-      if (found.length > 0) namedFound = true;
-      candidates.push(...found);
+      named.push(...this.findFontCandidates(name, bold, italic));
     }
 
-    // フォント未検出の警告 (従来どおり名前解決のみで判定する)
-    if (!namedFound) {
-      for (const name of [fontFamily, fontFamilyEa, jpanFallback]) {
-        if (name && !this.warnedFonts.has(name)) {
-          this.warnedFonts.add(name);
-          warn("font.notFound", `Font not found: "${name}"`);
-        }
+    if (named.length > 0) {
+      const primary = named[0];
+
+      // テキストが与えられなければ従来動作 (カバレッジ判定なし)
+      if (!text || fontCoversText(primary, text)) return primary;
+
+      // 優先候補にグリフが無い場合、候補列から全文字をカバーするフォントを探す
+      for (const candidate of named) {
+        if (fontCoversText(candidate, text)) return candidate;
+      }
+
+      // 全登録フォントからカバーするものを探す
+      const fallback = this.findCoveringFallback(text, bold, italic);
+      const missingChars = collectMissingChars(primary, text);
+      this.warnMissingGlyphs(fontFamily ?? fontFamilyEa, missingChars, fallback);
+      if (fallback) return fallback.font;
+
+      // どのフォントもカバーしない場合は従来どおり優先候補を返す (.notdef 描画)
+      return primary;
+    }
+
+    // 名前解決に全て失敗: フォント未検出の警告 (従来どおり)
+    for (const name of [fontFamily, fontFamilyEa, jpanFallback]) {
+      if (name && !this.warnedFonts.has(name)) {
+        this.warnedFonts.add(name);
+        warn("font.notFound", `Font not found: "${name}"`);
       }
     }
 
-    if (this.defaultFont) candidates.push(this.defaultFont);
-    const primary = candidates[0] ?? null;
-    if (!primary) return null;
-
-    // テキストが与えられなければ従来動作 (カバレッジ判定なし)
-    if (!text || fontCoversText(primary, text)) return primary;
-
-    // 優先候補にグリフが無い場合、候補列から全文字をカバーするフォントを探す
-    for (const candidate of candidates) {
-      if (fontCoversText(candidate, text)) return candidate;
+    // 優先順プールを既定として使う。単一の defaultFont と異なり
+    // 要求スタイル (Bold/Italic) のフェイスとグリフカバレッジを考慮できる。
+    const pooled = this.findPoolDefault(bold, italic, text);
+    if (pooled) {
+      if (text && !fontCoversText(pooled.font, text)) {
+        this.warnMissingGlyphs(
+          fontFamily ?? fontFamilyEa,
+          collectMissingChars(pooled.font, text),
+          null,
+        );
+      }
+      return pooled.font;
     }
-
-    // 全登録フォントからカバーするものを探す (スタイル一致を優先)
-    const fallback = this.findCoveringFallback(text, bold, italic);
-    const missingChars = collectMissingChars(primary, text);
-    this.warnMissingGlyphs(fontFamily ?? fontFamilyEa, missingChars, fallback);
-    if (fallback) return fallback.font;
-
-    // どのフォントもカバーしない場合は従来どおり優先候補を返す (.notdef 描画)
-    return primary;
+    return this.defaultFont;
   }
 
   private findFontCandidates(name: string, bold: boolean, italic: boolean): OpentypeFullFont[] {
@@ -200,21 +276,90 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
     return out;
   }
 
-  /** 登録済み全フォントからテキストをカバーするフォントを探す (結果はキャッシュ) */
+  /**
+   * 登録済み全フォントからテキストをカバーするフォントを探す (結果はキャッシュ)。
+   * ファミリ単位で優先順に探索する:
+   *   パス1: Regular フェイスがテキストをカバーする最初のファミリに固定し、
+   *          その中で要求スタイルに最も近いフェイスを選ぶ。
+   *   パス2: そのようなファミリが無い場合のみ、任意のフェイスがカバーする最初のファミリ。
+   * ファミリ固定により、同じテキストの Regular/Bold/Italic ランが
+   * 別々のフォールバックファミリへ散らばることを防ぐ。
+   */
   private findCoveringFallback(text: string, bold: boolean, italic: boolean): FallbackFace | null {
     const cacheKey = `${bold ? "b" : ""}${italic ? "i" : ""}|${text}`;
     const cached = this.coverageCache.get(cacheKey);
     if (cached !== undefined) return cached;
 
     let result: FallbackFace | null = null;
-    for (const [b, i] of fontStyleVariants(bold, italic)) {
-      const face = this.fallbackPool.find(
-        (f) => f.bold === b && f.italic === i && fontCoversText(f.font, text),
-      );
-      if (face) {
-        result = face;
-        break;
+    for (const faces of this.familyPool) {
+      const regular = faces.find((f) => !f.bold && !f.italic && fontCoversText(f.font, text));
+      if (!regular) continue;
+      result = this.pickCoveringFace(faces, bold, italic, text) ?? regular;
+      break;
+    }
+    if (!result) {
+      for (const faces of this.familyPool) {
+        const face = this.pickCoveringFace(faces, bold, italic, text);
+        if (face) {
+          result = face;
+          break;
+        }
       }
+    }
+
+    if (this.coverageCache.size >= COVERAGE_CACHE_LIMIT) this.coverageCache.clear();
+    this.coverageCache.set(cacheKey, result);
+    return result;
+  }
+
+  /** ファミリ内で要求スタイルに最も近い、テキストをカバーするフェイスを選ぶ */
+  private pickCoveringFace(
+    faces: FallbackFace[],
+    bold: boolean,
+    italic: boolean,
+    text?: string,
+  ): FallbackFace | null {
+    for (const [b, i] of fontStyleVariants(bold, italic)) {
+      const face = faces.find(
+        (f) => f.bold === b && f.italic === i && (!text || fontCoversText(f.font, text)),
+      );
+      if (face) return face;
+    }
+    return null;
+  }
+
+  /**
+   * 名前解決に全て失敗した場合の既定フォントをプールから選ぶ。
+   * Regular フェイスが (テキストをカバー) する最初のファミリに固定し、
+   * その中で要求スタイルに最も近いフェイスを返す。
+   * どのファミリもカバーしない場合はカバレッジ条件なしで再探索する
+   * (従来の .notdef 描画に相当するが、スタイルは維持される)。
+   */
+  private findPoolDefault(bold: boolean, italic: boolean, text?: string): FallbackFace | null {
+    const cacheKey = `d|${bold ? "b" : ""}${italic ? "i" : ""}|${text ?? ""}`;
+    const cached = this.coverageCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    let result: FallbackFace | null = null;
+    for (const faces of this.familyPool) {
+      const regular = faces.find(
+        (f) => !f.bold && !f.italic && (!text || fontCoversText(f.font, text)),
+      );
+      if (!regular) continue;
+      result = this.pickCoveringFace(faces, bold, italic, text) ?? regular;
+      break;
+    }
+    if (!result) {
+      for (const faces of this.familyPool) {
+        const face = this.pickCoveringFace(faces, bold, italic, text);
+        if (face) {
+          result = face;
+          break;
+        }
+      }
+    }
+    if (!result && text) {
+      result = this.findPoolDefault(bold, italic);
     }
 
     if (this.coverageCache.size >= COVERAGE_CACHE_LIMIT) this.coverageCache.clear();

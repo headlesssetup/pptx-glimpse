@@ -9,7 +9,11 @@ import type { OpentypeFont } from "./opentype-text-measurer.js";
 import { OpentypeTextMeasurer } from "./opentype-text-measurer.js";
 import { collectFontFilePaths } from "./system-font-loader.js";
 import type { FallbackFace, OpentypeFullFont, TextPathFontResolver } from "./text-path-context.js";
-import { DefaultTextPathFontResolver, fontStyleKey } from "./text-path-context.js";
+import {
+  DefaultTextPathFontResolver,
+  fontStyleKey,
+  orderFallbackPool,
+} from "./text-path-context.js";
 import { extractTtcFonts, isTtcBuffer } from "./ttc-parser.js";
 
 /** フォントバッファの入力形式 */
@@ -209,6 +213,7 @@ function registerParsedFont(
   reg: FontRegistry,
   font: OpentypeFontWithNames,
   names: Iterable<string>,
+  embedded = false,
 ): void {
   noteFirstFont(reg, font);
   const style = getFontStyle(font);
@@ -225,13 +230,14 @@ function registerParsedFont(
       reg.plainRegular,
     );
   }
-  // グリフカバレッジフォールバック用の候補プール。登録順 = 優先順
-  // (埋め込みフォント → システムフォント) で走査される。
+  // グリフカバレッジフォールバック用の候補プール。
+  // embedded (PPTX 埋め込み・ユーザー指定バッファ) はシステムフォントより優先される。
   reg.fallbackPool.push({
     name: poolName ?? "(unnamed)",
     bold: style.bold,
     italic: style.italic,
     font: font as unknown as OpentypeFullFont,
+    embedded,
   });
 }
 
@@ -248,7 +254,7 @@ function registerBufferList(
       const fonts = parseFontBuffer(arrayBuffer, opentype);
       for (const font of fonts) {
         const names = isTtc ? collectFontNames(font) : buffer.name ? [buffer.name] : [];
-        registerParsedFont(reg, font, names);
+        registerParsedFont(reg, font, names, true);
       }
     } catch {
       // パース失敗のフォントはスキップ
@@ -259,9 +265,13 @@ function registerBufferList(
 function buildSetup(reg: FontRegistry): OpentypeSetup | null {
   if (reg.measurerFonts.size === 0 && !reg.firstMeasurerFont) return null;
   const measurer = new OpentypeTextMeasurer(reg.measurerFonts, reg.firstMeasurerFont ?? undefined);
+  // 名前解決に失敗したフォントのデフォルトも優先順プールに従わせる
+  // (スキャン順で先頭のフォントという恣意的な選択を避ける)。
+  const ordered = orderFallbackPool(reg.fallbackPool);
+  const defaultFace = ordered.find((f) => !f.bold && !f.italic) ?? ordered[0];
   const fontResolver = new DefaultTextPathFontResolver(
     reg.resolverFonts,
-    reg.firstResolverFont ?? undefined,
+    defaultFace?.font ?? reg.firstResolverFont ?? undefined,
     reg.fallbackPool,
   );
   return { measurer, fontResolver };

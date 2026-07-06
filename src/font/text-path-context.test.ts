@@ -8,6 +8,7 @@ import {
   fontStyleKey,
   fontStyleVariants,
   getTextPathFontResolver,
+  orderFallbackPool,
   resetTextPathFontResolver,
   setTextPathFontResolver,
 } from "./text-path-context.js";
@@ -279,21 +280,55 @@ describe("DefaultTextPathFontResolver グリフカバレッジフォールバッ
     expect(resolver.resolveFont("MissingFamily", null, undefined, undefined, "stāsts")).toBe(wide);
   });
 
-  it("フォールバックはスタイル一致を優先する", () => {
+  it("フォールバックは同一ファミリ内で要求スタイルのフェイスを選ぶ", () => {
     const narrow = createCoverageFont("NarrowFont", LATIN);
-    const wideRegular = createCoverageFont("Wide-Regular", LATVIAN);
-    const wideBold = createCoverageFont("Wide-Bold", LATVIAN);
+    const wideRegular = createCoverageFont("Wide/Regular", LATVIAN);
+    const wideBold = createCoverageFont("Wide/Bold", LATVIAN);
     const fonts = new Map([["NarrowFont", narrow]]);
     const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
       { name: "NarrowFont", bold: false, italic: false, font: narrow },
-      { name: "Wide-Regular", bold: false, italic: false, font: wideRegular },
-      { name: "Wide-Bold", bold: true, italic: false, font: wideBold },
+      { name: "Wide", bold: false, italic: false, font: wideRegular },
+      { name: "Wide", bold: true, italic: false, font: wideBold },
     ]);
     expect(resolver.resolveFont("NarrowFont", null, undefined, { bold: true }, "Ceļš")).toBe(
       wideBold,
     );
     expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš")).toBe(
       wideRegular,
+    );
+  });
+
+  it("スタイル違いのランが別ファミリへ散らばらない (Regular フェイスを持つファミリに固定)", () => {
+    // Italic のみのファミリがプール先頭にあっても、Regular を持つファミリへ揃える
+    const thinItalic = createCoverageFont("ThinItalic", LATVIAN);
+    const wideRegular = createCoverageFont("Wide/Regular", LATVIAN);
+    const wideItalic = createCoverageFont("Wide/Italic", LATVIAN);
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "NarrowFont", bold: false, italic: false, font: narrow },
+      { name: "ThinItalic", bold: false, italic: true, font: thinItalic },
+      { name: "Wide", bold: false, italic: false, font: wideRegular },
+      { name: "Wide", bold: false, italic: true, font: wideItalic },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš")).toBe(
+      wideRegular,
+    );
+    expect(resolver.resolveFont("NarrowFont", null, undefined, { italic: true }, "Ceļš")).toBe(
+      wideItalic,
+    );
+  });
+
+  it("Regular を持つファミリが無ければ任意のフェイスでカバーするファミリを使う", () => {
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const onlyItalic = createCoverageFont("OnlyItalic", LATVIAN);
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "NarrowFont", bold: false, italic: false, font: narrow },
+      { name: "OnlyItalic", bold: false, italic: true, font: onlyItalic },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, { italic: true }, "Ceļš")).toBe(
+      onlyItalic,
     );
   });
 
@@ -350,5 +385,42 @@ describe("DefaultTextPathFontResolver グリフカバレッジフォールバッ
     expect(entries).toHaveLength(1);
     expect(entries[0].message).toContain("ļ");
     expect(entries[0].message).toContain("WideFont");
+  });
+});
+
+describe("orderFallbackPool", () => {
+  const font = () => createMockFont("f");
+
+  it("優先ファミリをスキャン順より前に並べる", () => {
+    const pool = [
+      { name: "Random First", bold: false, italic: false, font: font() },
+      { name: "DejaVu Sans", bold: false, italic: false, font: font() },
+      { name: "Carlito", bold: false, italic: false, font: font() },
+    ];
+    const ordered = orderFallbackPool(pool);
+    expect(ordered.map((f) => f.name)).toEqual(["Carlito", "DejaVu Sans", "Random First"]);
+  });
+
+  it("埋め込みフォントは優先ファミリよりさらに前", () => {
+    const pool = [
+      { name: "Carlito", bold: false, italic: false, font: font() },
+      { name: "Corporate Embedded", bold: false, italic: false, font: font(), embedded: true },
+    ];
+    const ordered = orderFallbackPool(pool);
+    expect(ordered.map((f) => f.name)).toEqual(["Corporate Embedded", "Carlito"]);
+  });
+
+  it("同一ファミリのフェイスは隣接を保つ", () => {
+    const pool = [
+      { name: "Liberation Sans", bold: false, italic: false, font: font() },
+      { name: "Other", bold: false, italic: false, font: font() },
+      { name: "Liberation Sans", bold: true, italic: false, font: font() },
+    ];
+    const ordered = orderFallbackPool(pool);
+    expect(ordered.map((f) => `${f.name}${f.bold ? " b" : ""}`)).toEqual([
+      "Liberation Sans",
+      "Liberation Sans b",
+      "Other",
+    ]);
   });
 });
