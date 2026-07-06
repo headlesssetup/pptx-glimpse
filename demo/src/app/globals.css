@@ -90,6 +90,67 @@ header .description {
   margin-top: 1rem;
 }
 
+.options-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #666;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.toolbar button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: #4472c4;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: #3561b0;
+}
+
+.toolbar button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.toolbar button.secondary {
+  background: white;
+  color: #4472c4;
+  border: 1px solid #4472c4;
+}
+
+.toolbar button.secondary:hover {
+  background: #eef3fb;
+}
+
+.toolbar-error {
+  text-align: center;
+  color: #d32f2f;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
 .slide-nav {
   display: flex;
   align-items: center;
@@ -133,6 +194,7 @@ header .description {
 }
 
 .thumbnail {
+  position: relative;
   flex: 0 0 120px;
   border: 2px solid transparent;
   border-radius: 4px;
@@ -141,6 +203,19 @@ header .description {
   background: white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: border-color 0.2s;
+}
+
+.thumbnail-badge {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 10px;
+  line-height: 16px;
+  pointer-events: none;
 }
 
 .thumbnail.active {

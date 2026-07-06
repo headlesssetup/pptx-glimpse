@@ -1,28 +1,33 @@
 "use client";
 
-interface Slide {
-  slideNumber: number;
-  svg: string;
-}
+import type { Frame } from "@/lib/frames";
+import { frameLabel } from "@/lib/frames";
 
 export function ThumbnailStrip({
-  slides,
+  frames,
   currentIndex,
   onSelect,
 }: {
-  slides: Slide[];
+  frames: Frame[];
   currentIndex: number;
   onSelect: (index: number) => void;
 }) {
   return (
     <div className="thumbnail-strip">
-      {slides.map((slide, index) => (
+      {frames.map((frame, index) => (
         <div
-          key={slide.slideNumber}
+          key={index}
           className={`thumbnail${index === currentIndex ? " active" : ""}`}
+          title={frameLabel(frame)}
           onClick={() => onSelect(index)}
-          dangerouslySetInnerHTML={{ __html: slide.svg }}
-        />
+        >
+          <div className="thumbnail-svg" dangerouslySetInnerHTML={{ __html: frame.svg }} />
+          {frame.stepIndex !== undefined && (
+            <span className="thumbnail-badge">
+              {frame.slideNumber}·{frame.stepIndex}
+            </span>
+          )}
+        </div>
       ))}
     </div>
   );

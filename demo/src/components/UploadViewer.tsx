@@ -1,53 +1,125 @@
 "use client";
 
+import { zipSync } from "fflate";
 import { useCallback, useState } from "react";
+
+import { svgToPngBlob, triggerDownload } from "@/lib/download";
+import type { Frame } from "@/lib/frames";
+import { frameFileName } from "@/lib/frames";
+
 import { DropZone } from "./DropZone";
 import { SlideViewer } from "./SlideViewer";
 import { ThumbnailStrip } from "./ThumbnailStrip";
-
-interface Slide {
-  slideNumber: number;
-  svg: string;
-}
 
 type Phase = "upload" | "loading" | "viewing" | "error";
 
 export function UploadViewer() {
   const [phase, setPhase] = useState<Phase>("upload");
-  const [slides, setSlides] = useState<Slide[]>([]);
+  const [frames, setFrames] = useState<Frame[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
+  const [animationSteps, setAnimationSteps] = useState(false);
+  const [deckName, setDeckName] = useState("slides");
+  const [zipProgress, setZipProgress] = useState<number | null>(null);
+  const [downloadError, setDownloadError] = useState("");
 
-  const handleFile = useCallback(async (file: File) => {
-    setPhase("loading");
+  const handleFile = useCallback(
+    async (file: File) => {
+      setPhase("loading");
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        if (animationSteps) formData.append("animationSteps", "1");
 
-      const res = await fetch("/api/convert", { method: "POST", body: formData });
-      const data = await res.json();
+        const res = await fetch("/api/convert", { method: "POST", body: formData });
+        const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Conversion failed");
+        if (!res.ok) {
+          throw new Error(data.error || "Conversion failed");
+        }
+
+        setDeckName(file.name.replace(/\.pptx$/i, "") || "slides");
+        setFrames(data.slides);
+        setCurrentIndex(0);
+        setDownloadError("");
+        setPhase("viewing");
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setPhase("error");
       }
-
-      setSlides(data.slides);
-      setCurrentIndex(0);
-      setPhase("viewing");
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err));
-      setPhase("error");
-    }
-  }, []);
+    },
+    [animationSteps],
+  );
 
   const handleNavigate = useCallback(
     (index: number) => {
-      if (index >= 0 && index < slides.length) {
+      if (index >= 0 && index < frames.length) {
         setCurrentIndex(index);
       }
     },
-    [slides.length],
+    [frames.length],
+  );
+
+  const handleReset = useCallback(() => {
+    setFrames([]);
+    setCurrentIndex(0);
+    setDownloadError("");
+    setPhase("upload");
+  }, []);
+
+  const downloadCurrent = useCallback(
+    async (format: "png" | "svg") => {
+      const frame = frames[currentIndex];
+      if (!frame) return;
+      setDownloadError("");
+      try {
+        if (format === "svg") {
+          const blob = new Blob([frame.svg], { type: "image/svg+xml;charset=utf-8" });
+          triggerDownload(blob, frameFileName(frame, "svg"));
+        } else {
+          triggerDownload(await svgToPngBlob(frame.svg), frameFileName(frame, "png"));
+        }
+      } catch (err) {
+        setDownloadError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [frames, currentIndex],
+  );
+
+  const downloadAll = useCallback(async () => {
+    if (zipProgress !== null) return;
+    setDownloadError("");
+    setZipProgress(0);
+    try {
+      const files: Record<string, Uint8Array> = {};
+      for (let i = 0; i < frames.length; i++) {
+        setZipProgress(i + 1);
+        const blob = await svgToPngBlob(frames[i].svg);
+        files[frameFileName(frames[i], "png")] = new Uint8Array(await blob.arrayBuffer());
+      }
+      // PNG data is already compressed — store entries instead of re-deflating.
+      const zipped = zipSync(files, { level: 0 });
+      const blob = new Blob([zipped as BlobPart], { type: "application/zip" });
+      triggerDownload(blob, `${deckName}.zip`);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setZipProgress(null);
+    }
+  }, [frames, deckName, zipProgress]);
+
+  const optionsRow = (
+    <div className="options-row">
+      <label className="option">
+        <input
+          type="checkbox"
+          checked={animationSteps}
+          onChange={(e) => setAnimationSteps(e.target.checked)}
+        />
+        Render click-animation steps as separate frames
+      </label>
+    </div>
   );
 
   if (phase === "loading") {
@@ -62,6 +134,7 @@ export function UploadViewer() {
     return (
       <>
         <div className="error">Error: {errorMessage}</div>
+        {optionsRow}
         <DropZone onFile={handleFile} />
       </>
     );
@@ -70,11 +143,29 @@ export function UploadViewer() {
   if (phase === "viewing") {
     return (
       <>
-        <SlideViewer slides={slides} currentIndex={currentIndex} onNavigate={handleNavigate} />
-        <ThumbnailStrip slides={slides} currentIndex={currentIndex} onSelect={handleNavigate} />
+        <div className="toolbar">
+          <button onClick={() => downloadCurrent("png")}>Download PNG</button>
+          <button onClick={() => downloadCurrent("svg")}>Download SVG</button>
+          <button onClick={downloadAll} disabled={zipProgress !== null}>
+            {zipProgress !== null
+              ? `Preparing… ${zipProgress}/${frames.length}`
+              : `Download all (${frames.length}) as ZIP`}
+          </button>
+          <button className="secondary" onClick={handleReset}>
+            Convert another file
+          </button>
+        </div>
+        {downloadError && <div className="toolbar-error">Download failed: {downloadError}</div>}
+        <SlideViewer frames={frames} currentIndex={currentIndex} onNavigate={handleNavigate} />
+        <ThumbnailStrip frames={frames} currentIndex={currentIndex} onSelect={handleNavigate} />
       </>
     );
   }
 
-  return <DropZone onFile={handleFile} />;
+  return (
+    <>
+      {optionsRow}
+      <DropZone onFile={handleFile} />
+    </>
+  );
 }

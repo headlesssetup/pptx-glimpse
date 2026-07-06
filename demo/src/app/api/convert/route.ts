@@ -10,9 +10,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    const animationSteps = formData.get("animationSteps") === "1";
+
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-    const slides = await convertPptxToSvg(uint8Array);
+    const slides = await convertPptxToSvg(uint8Array, { animationSteps });
 
     if (slides.length === 0) {
       return NextResponse.json({ error: "No slides found in the uploaded file" }, { status: 400 });

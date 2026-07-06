@@ -2,17 +2,15 @@
 
 import { useEffect } from "react";
 
-interface Slide {
-  slideNumber: number;
-  svg: string;
-}
+import type { Frame } from "@/lib/frames";
+import { frameLabel } from "@/lib/frames";
 
 export function SlideViewer({
-  slides,
+  frames,
   currentIndex,
   onNavigate,
 }: {
-  slides: Slide[];
+  frames: Frame[];
   currentIndex: number;
   onNavigate: (index: number) => void;
 }) {
@@ -25,6 +23,9 @@ export function SlideViewer({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [currentIndex, onNavigate]);
 
+  const frame = frames[currentIndex];
+  const hasSteps = frame.stepIndex !== undefined;
+
   return (
     <>
       <div className="slide-nav">
@@ -32,19 +33,18 @@ export function SlideViewer({
           &laquo; Prev
         </button>
         <span>
-          Slide {currentIndex + 1} / {slides.length}
+          {hasSteps
+            ? `Frame ${currentIndex + 1} / ${frames.length} — ${frameLabel(frame)}`
+            : `Slide ${currentIndex + 1} / ${frames.length}`}
         </span>
         <button
-          disabled={currentIndex === slides.length - 1}
+          disabled={currentIndex === frames.length - 1}
           onClick={() => onNavigate(currentIndex + 1)}
         >
           Next &raquo;
         </button>
       </div>
-      <div
-        className="slide-container"
-        dangerouslySetInnerHTML={{ __html: slides[currentIndex].svg }}
-      />
+      <div className="slide-container" dangerouslySetInnerHTML={{ __html: frame.svg }} />
     </>
   );
 }
