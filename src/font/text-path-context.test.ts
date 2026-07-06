@@ -455,3 +455,25 @@ describe("実フォント優先", () => {
     expect(resolver.resolveFont("Aptos", null, null, { bold: true })).toBe(aptosBold);
   });
 });
+
+describe("resetWarningDedup", () => {
+  afterEach(() => {
+    initWarningLogger("off");
+  });
+
+  it("リセット後は同じフォントの警告を再度報告する (変換単位の警告)", () => {
+    initWarningLogger("warn");
+    const resolver = new DefaultTextPathFontResolver(new Map());
+    resolver.resolveFont("MissingFont", null);
+    expect(getWarningEntries().filter((e) => e.feature === "font.notFound")).toHaveLength(1);
+
+    // リセットなし: 重複抑制される
+    resolver.resolveFont("MissingFont", null);
+    expect(getWarningEntries().filter((e) => e.feature === "font.notFound")).toHaveLength(1);
+
+    // リセットあり: 次の変換として再度警告される
+    resolver.resetWarningDedup();
+    resolver.resolveFont("MissingFont", null);
+    expect(getWarningEntries().filter((e) => e.feature === "font.notFound")).toHaveLength(2);
+  });
+});

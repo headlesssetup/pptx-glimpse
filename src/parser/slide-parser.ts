@@ -1494,7 +1494,8 @@ function parseParagraph(
     spaceAfter: parseSpacing(pPr?.spcAft as XmlNode | undefined),
     level,
     bullet: bullet ?? lstLevelProps?.bullet ?? null,
-    bulletFont: bulletFont ?? lstLevelProps?.bulletFont ?? null,
+    // buFont は "+mj-lt" 等のテーマフォントトークンを取り得るため実フォント名に解決する
+    bulletFont: resolveThemeFont(bulletFont ?? lstLevelProps?.bulletFont ?? null, fontScheme),
     bulletColor: bulletColor ?? lstLevelProps?.bulletColor ?? null,
     bulletSizePct: bulletSizePct ?? lstLevelProps?.bulletSizePct ?? null,
     marginLeft:

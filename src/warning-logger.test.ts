@@ -156,9 +156,9 @@ describe("warning-logger", () => {
       expect(spy).toHaveBeenCalledWith("  - sp.style: 2 occurrence(s)");
       expect(spy).toHaveBeenCalledWith("  - ln.headEnd: 1 occurrence(s)");
 
-      // State is reset
-      expect(getWarningEntries()).toHaveLength(0);
-      expect(getWarningSummary().totalCount).toBe(0);
+      // 直近の変換の警告は flush 後も参照できる (次の initWarningLogger でクリア)
+      expect(getWarningEntries()).toHaveLength(3);
+      expect(getWarningSummary().totalCount).toBe(3);
     });
 
     it("does not output when level is off", () => {
@@ -176,5 +176,25 @@ describe("warning-logger", () => {
       expect(summary.features).toHaveLength(0);
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("flush 後の警告参照", () => {
+  it("flushWarnings 後も直近の変換の警告を取得できる", () => {
+    initWarningLogger("warn");
+    warn("font.notFound", 'Font not found: "Aptos"');
+    flushWarnings();
+    expect(getWarningEntries()).toHaveLength(1);
+    expect(getWarningEntries()[0].message).toContain("Aptos");
+    expect(getWarningSummary().totalCount).toBe(1);
+  });
+
+  it("initWarningLogger で直近の警告もクリアされる", () => {
+    initWarningLogger("warn");
+    warn("font.notFound", 'Font not found: "Aptos"');
+    flushWarnings();
+    initWarningLogger("warn");
+    expect(getWarningEntries()).toHaveLength(0);
+    expect(getWarningSummary().totalCount).toBe(0);
   });
 });

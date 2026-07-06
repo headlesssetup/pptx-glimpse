@@ -19,11 +19,17 @@ const PREFIX = "[pptx-glimpse]";
 let currentLevel: LogLevel = "off";
 let entries: WarningEntry[] = [];
 const featureCounts = new Map<string, { message: string; count: number }>();
+// 直近の変換の警告。flushWarnings 後も getWarningEntries / getWarningSummary で
+// 参照できるように保持する (変換 API は終了時に必ず flush するため)。
+let lastFlushedEntries: WarningEntry[] = [];
+let lastFlushedSummary: WarningSummary | null = null;
 
 export function initWarningLogger(level: LogLevel): void {
   currentLevel = level;
   entries = [];
   featureCounts.clear();
+  lastFlushedEntries = [];
+  lastFlushedSummary = null;
 }
 
 export function warn(feature: string, message: string, context?: string): void {
@@ -61,6 +67,9 @@ export function debug(feature: string, message: string, context?: string): void 
 }
 
 export function getWarningSummary(): WarningSummary {
+  if (entries.length === 0 && lastFlushedSummary) {
+    return lastFlushedSummary;
+  }
   const features: WarningSummary["features"] = [];
   for (const [feature, { message, count }] of featureCounts) {
     features.push({ feature, message, count });
@@ -78,6 +87,8 @@ export function flushWarnings(): WarningSummary {
     }
   }
 
+  lastFlushedEntries = entries;
+  lastFlushedSummary = summary;
   entries = [];
   featureCounts.clear();
 
@@ -85,7 +96,7 @@ export function flushWarnings(): WarningSummary {
 }
 
 export function getWarningEntries(): readonly WarningEntry[] {
-  return entries;
+  return entries.length > 0 ? entries : lastFlushedEntries;
 }
 
 export function getLogLevel(): LogLevel {

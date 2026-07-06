@@ -119,6 +119,15 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
       }
     }
 
+    // マスター/レイアウト由来の buFont が "+mj-lt" 等のテーマフォントトークンの
+    // 場合があるため、継承解決後に実フォント名へ解決する
+    if (paragraph.properties.bulletFont !== null) {
+      paragraph.properties.bulletFont = resolveThemeFont(
+        paragraph.properties.bulletFont,
+        context.fontScheme,
+      );
+    }
+
     // 段落 marginLeft / indent の継承解決
     if (paragraph.properties.marginLeft === null || paragraph.properties.indent === null) {
       for (const source of chainSources) {

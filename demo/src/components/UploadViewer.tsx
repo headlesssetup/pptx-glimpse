@@ -22,6 +22,7 @@ export function UploadViewer() {
   const [deckName, setDeckName] = useState("slides");
   const [zipProgress, setZipProgress] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState("");
+  const [fontWarnings, setFontWarnings] = useState<string[]>([]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -41,6 +42,7 @@ export function UploadViewer() {
 
         setDeckName(file.name.replace(/\.pptx$/i, "") || "slides");
         setFrames(data.slides);
+        setFontWarnings(Array.isArray(data.fontWarnings) ? data.fontWarnings : []);
         setCurrentIndex(0);
         setDownloadError("");
         setPhase("viewing");
@@ -143,6 +145,22 @@ export function UploadViewer() {
   if (phase === "viewing") {
     return (
       <>
+        {fontWarnings.length > 0 && (
+          <div className="font-warnings">
+            <strong>Fonts are not faithful — this deck does not carry its fonts.</strong>
+            <ul>
+              {fontWarnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+            <p>
+              For an exact match, re-save the deck in PowerPoint with{" "}
+              <em>File → Options → Save → “Embed fonts in the file”</em> (choose “Embed all
+              characters”) and upload it again. Alternatively, install the fonts on this server
+              (see <code>PPTX_GLIMPSE_FONT_DIRS</code>).
+            </p>
+          </div>
+        )}
         <div className="toolbar">
           <button onClick={() => downloadCurrent("png")}>Download PNG</button>
           <button onClick={() => downloadCurrent("svg")}>Download SVG</button>

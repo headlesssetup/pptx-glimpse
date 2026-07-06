@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convertPptxToSvg } from "pptx-glimpse";
+import { convertPptxToSvg, getWarningEntries } from "pptx-glimpse";
 import { delimiter, resolve } from "path";
 
 /**
@@ -35,13 +35,25 @@ export async function POST(request: NextRequest) {
     const slides = await convertPptxToSvg(uint8Array, {
       animationSteps,
       fontDirs: getFontDirs(),
+      logLevel: "warn",
     });
 
     if (slides.length === 0) {
       return NextResponse.json({ error: "No slides found in the uploaded file" }, { status: 400 });
     }
 
-    return NextResponse.json({ slides });
+    // Deck-quality diagnostics: fonts the deck references but does not embed
+    // (and that are not installed on this server), or fonts missing glyphs.
+    // Surfaced in the UI so decks can be fixed at the source.
+    const fontWarnings = [
+      ...new Set(
+        getWarningEntries()
+          .filter((e) => e.feature.startsWith("font."))
+          .map((e) => e.message),
+      ),
+    ];
+
+    return NextResponse.json({ slides, fontWarnings });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Conversion failed: ${message}` }, { status: 500 });

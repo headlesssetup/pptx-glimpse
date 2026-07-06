@@ -152,6 +152,12 @@ export interface TextPathFontResolver {
     style?: FontStyle,
     text?: string,
   ): OpentypeFullFont | null;
+  /**
+   * 警告の重複抑制状態をリセットする。リゾルバーはプロセス内でキャッシュされ
+   * 複数の変換で共有されるため、変換ごとに呼ぶことで 2 回目以降の変換でも
+   * font.notFound / font.missingGlyphs が正しく報告される。
+   */
+  resetWarningDedup?(): void;
 }
 
 const COVERAGE_CACHE_LIMIT = 1000;
@@ -185,6 +191,11 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       }
       faces.push(face);
     }
+  }
+
+  resetWarningDedup(): void {
+    this.warnedFonts.clear();
+    this.warnedGlyphs.clear();
   }
 
   resolveFont(

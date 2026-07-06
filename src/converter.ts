@@ -87,6 +87,9 @@ export async function convertPptxToSvg(
       embeddedBuffers,
     );
     if (setup) {
+      // リゾルバーはキャッシュされ変換間で共有されるため、警告の重複抑制を
+      // 変換単位にリセットする (2 回目以降の変換でもフォント警告を報告する)
+      setup.fontResolver.resetWarningDedup?.();
       setTextMeasurer(setup.measurer);
       setTextPathFontResolver(setup.fontResolver);
     }
