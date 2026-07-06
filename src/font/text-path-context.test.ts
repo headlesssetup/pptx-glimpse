@@ -229,3 +229,126 @@ describe("DefaultTextPathFontResolver font.notFound 警告", () => {
     expect(entries).toHaveLength(0);
   });
 });
+
+describe("DefaultTextPathFontResolver グリフカバレッジフォールバック", () => {
+  /** 指定した文字集合のみグリフを持つモックフォントを作る */
+  function createCoverageFont(name: string, coveredChars: string): OpentypeFullFont {
+    const covered = new Set(coveredChars);
+    return {
+      ...createMockFont(name),
+      charToGlyphIndex: (char: string) => (covered.has(char) ? 1 : 0),
+    };
+  }
+
+  const LATIN = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:";
+  const LATVIAN = `${LATIN}ļēāšņī`;
+
+  it("解決したフォントが全グリフを持つ場合はそのまま使う", () => {
+    const arial = createCoverageFont("Arial", LATVIAN);
+    const fonts = new Map([["Arial", arial]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "Arial", bold: false, italic: false, font: arial },
+    ]);
+    expect(resolver.resolveFont("Arial", null, undefined, undefined, "Ceļš")).toBe(arial);
+  });
+
+  it("解決したフォントにグリフが無い場合はカバーするフォントにフォールバック", () => {
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const wide = createCoverageFont("WideFont", LATVIAN);
+    const fonts = new Map([
+      ["NarrowFont", narrow],
+      ["WideFont", wide],
+    ]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "NarrowFont", bold: false, italic: false, font: narrow },
+      { name: "WideFont", bold: false, italic: false, font: wide },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš")).toBe(wide);
+    // ASCII のみのテキストは従来どおり NarrowFont
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Hello")).toBe(narrow);
+  });
+
+  it("defaultFont にグリフが無い場合もプールからフォールバック", () => {
+    const narrow = createCoverageFont("NarrowDefault", LATIN);
+    const wide = createCoverageFont("WideFont", LATVIAN);
+    const fonts = new Map([["WideFont", wide]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, narrow, [
+      { name: "NarrowDefault", bold: false, italic: false, font: narrow },
+      { name: "WideFont", bold: false, italic: false, font: wide },
+    ]);
+    expect(resolver.resolveFont("MissingFamily", null, undefined, undefined, "stāsts")).toBe(wide);
+  });
+
+  it("フォールバックはスタイル一致を優先する", () => {
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const wideRegular = createCoverageFont("Wide-Regular", LATVIAN);
+    const wideBold = createCoverageFont("Wide-Bold", LATVIAN);
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "NarrowFont", bold: false, italic: false, font: narrow },
+      { name: "Wide-Regular", bold: false, italic: false, font: wideRegular },
+      { name: "Wide-Bold", bold: true, italic: false, font: wideBold },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, { bold: true }, "Ceļš")).toBe(
+      wideBold,
+    );
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš")).toBe(
+      wideRegular,
+    );
+  });
+
+  it("どのフォントもカバーしない場合は従来どおり優先候補を返す", () => {
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "NarrowFont", bold: false, italic: false, font: narrow },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš")).toBe(narrow);
+  });
+
+  it("text 未指定なら従来動作 (カバレッジ判定なし)", () => {
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const wide = createCoverageFont("WideFont", LATVIAN);
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "WideFont", bold: false, italic: false, font: wide },
+    ]);
+    expect(resolver.resolveFont("NarrowFont", null)).toBe(narrow);
+  });
+
+  it("charToGlyphIndex を持たないフォントは判定不能として従来動作", () => {
+    const plain = createMockFont("PlainFont");
+    const wide = createCoverageFont("WideFont", LATVIAN);
+    const fonts = new Map([["PlainFont", plain]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "WideFont", bold: false, italic: false, font: wide },
+    ]);
+    expect(resolver.resolveFont("PlainFont", null, undefined, undefined, "Ceļš")).toBe(plain);
+  });
+
+  it("空白のみのテキストではフォールバックしない", () => {
+    const narrow = createCoverageFont("NarrowFont", "");
+    const fonts = new Map([["NarrowFont", narrow]]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, []);
+    expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "  \t ")).toBe(narrow);
+  });
+
+  it("フォールバック時に font.missingGlyphs の警告を出す", () => {
+    initWarningLogger("warn");
+    const narrow = createCoverageFont("NarrowFont", LATIN);
+    const wide = createCoverageFont("WideFont", LATVIAN);
+    const fonts = new Map([
+      ["NarrowFont", narrow],
+      ["WideFont", wide],
+    ]);
+    const resolver = new DefaultTextPathFontResolver(fonts, undefined, [
+      { name: "WideFont", bold: false, italic: false, font: wide },
+    ]);
+    resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš");
+    resolver.resolveFont("NarrowFont", null, undefined, undefined, "Ceļš");
+    const entries = getWarningEntries().filter((e) => e.feature === "font.missingGlyphs");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].message).toContain("ļ");
+    expect(entries[0].message).toContain("WideFont");
+  });
+});

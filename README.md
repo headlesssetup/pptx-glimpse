@@ -193,6 +193,10 @@ const results = await convertPptxToPng(pptx, { useEmbeddedFonts: true }); // def
 
 PowerPoint wraps embedded fonts in the EOT container and compresses them with **MicroType Express** (the default); pptx-glimpse decodes both, including subsetted ("embed only characters in use") fonts. Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). Currently applies to the main text (SVG path) rendering.
 
+### Glyph Fallback
+
+If the resolved font is missing glyphs for some characters (e.g., Latvian ļ/ē/ā in a font that only covers Western European Latin), pptx-glimpse automatically falls back — per text run — to another available font that covers those characters instead of rendering .notdef boxes. Embedded fonts are preferred, and a matching bold/italic face is chosen when available. A `font.missingGlyphs` warning is logged (visible with `logLevel: "warn"`).
+
 ### Font Mapping
 
 PPTX files often reference proprietary fonts (e.g., Calibri, Meiryo). pptx-glimpse maps these to open-source alternatives available on Google Fonts.

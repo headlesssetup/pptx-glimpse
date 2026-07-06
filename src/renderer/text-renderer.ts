@@ -926,6 +926,7 @@ function measureLineWidth(
         seg.properties.fontFamilyEa,
         jpanFallback,
         { bold: seg.properties.bold, italic: seg.properties.italic },
+        seg.text,
       );
       if (font) {
         totalWidth += font.getAdvanceWidth(seg.text, fontSizePx);
@@ -1028,10 +1029,13 @@ function renderSegmentAsPath(
   ) => {
     if (segText.length === 0) return;
 
-    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback, {
-      bold: props.bold,
-      italic: props.italic,
-    });
+    const font = fontResolver.resolveFont(
+      fontFamily,
+      fontFamilyEa,
+      jpanFallback,
+      { bold: props.bold, italic: props.italic },
+      segText,
+    );
     const segWidth = font
       ? font.getAdvanceWidth(segText, fontSizePx)
       : getTextMeasurer().measureTextWidth(
@@ -1072,10 +1076,13 @@ function renderSegmentAsPath(
   ) => {
     if (segText.length === 0) return;
 
-    const font = fontResolver.resolveFont(fontFamily, fontFamilyEa, jpanFallback, {
-      bold: props.bold,
-      italic: props.italic,
-    });
+    const font = fontResolver.resolveFont(
+      fontFamily,
+      fontFamilyEa,
+      jpanFallback,
+      { bold: props.bold, italic: props.italic },
+      segText,
+    );
     const fillAttrs = buildPathFillAttrs(props);
 
     for (const char of segText) {
@@ -1171,8 +1178,14 @@ function renderBulletAsPath(
 
   // bulletFont が指定されている場合はそれを使用し、未指定の場合はテキストランのフォントにフォールバック
   const font = paraProps.bulletFont
-    ? fontResolver.resolveFont(paraProps.bulletFont, null)
-    : fontResolver.resolveFont(runFontFamily ?? null, runFontFamilyEa ?? null);
+    ? fontResolver.resolveFont(paraProps.bulletFont, null, undefined, undefined, bulletText)
+    : fontResolver.resolveFont(
+        runFontFamily ?? null,
+        runFontFamilyEa ?? null,
+        undefined,
+        undefined,
+        bulletText,
+      );
   if (!font) return [];
 
   const path = font.getPath(bulletText, x, y, fontSizePx);

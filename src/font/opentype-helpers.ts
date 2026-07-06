@@ -8,7 +8,7 @@ import { createFontMapping } from "./font-mapping.js";
 import type { OpentypeFont } from "./opentype-text-measurer.js";
 import { OpentypeTextMeasurer } from "./opentype-text-measurer.js";
 import { collectFontFilePaths } from "./system-font-loader.js";
-import type { OpentypeFullFont, TextPathFontResolver } from "./text-path-context.js";
+import type { FallbackFace, OpentypeFullFont, TextPathFontResolver } from "./text-path-context.js";
 import { DefaultTextPathFontResolver, fontStyleKey } from "./text-path-context.js";
 import { extractTtcFonts, isTtcBuffer } from "./ttc-parser.js";
 
@@ -184,6 +184,7 @@ interface FontRegistry {
   reverseMap: Map<string, string[]>;
   firstMeasurerFont: OpentypeFont | null;
   firstResolverFont: OpentypeFullFont | null;
+  fallbackPool: FallbackFace[];
 }
 
 function newFontRegistry(mapping: FontMapping): FontRegistry {
@@ -194,6 +195,7 @@ function newFontRegistry(mapping: FontMapping): FontRegistry {
     reverseMap: buildReverseMapping(mapping),
     firstMeasurerFont: null,
     firstResolverFont: null,
+    fallbackPool: [],
   };
 }
 
@@ -210,7 +212,9 @@ function registerParsedFont(
 ): void {
   noteFirstFont(reg, font);
   const style = getFontStyle(font);
+  let poolName: string | null = null;
   for (const name of names) {
+    poolName ??= name;
     registerFont(
       name,
       font,
@@ -221,6 +225,14 @@ function registerParsedFont(
       reg.plainRegular,
     );
   }
+  // グリフカバレッジフォールバック用の候補プール。登録順 = 優先順
+  // (埋め込みフォント → システムフォント) で走査される。
+  reg.fallbackPool.push({
+    name: poolName ?? "(unnamed)",
+    bold: style.bold,
+    italic: style.italic,
+    font: font as unknown as OpentypeFullFont,
+  });
 }
 
 /** フォントバッファ群をレジストリに登録する (TTC は names テーブル、それ以外は buffer.name) */
@@ -250,6 +262,7 @@ function buildSetup(reg: FontRegistry): OpentypeSetup | null {
   const fontResolver = new DefaultTextPathFontResolver(
     reg.resolverFonts,
     reg.firstResolverFont ?? undefined,
+    reg.fallbackPool,
   );
   return { measurer, fontResolver };
 }
