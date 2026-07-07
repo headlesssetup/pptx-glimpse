@@ -17,6 +17,11 @@ import type {
 } from "../model/text.js";
 import { EMU_PER_INCH } from "../utils/constants.js";
 import { emuToPixels } from "../utils/emu.js";
+import {
+  EMOJI_FONT_FAMILY,
+  measureEmojiWidth,
+  splitByEmoji,
+} from "../utils/emoji.js";
 import { wrapParagraph } from "../utils/text-wrap.js";
 import type { Emu } from "../utils/unit-types.js";
 import { asEmu } from "../utils/unit-types.js";
@@ -916,30 +921,9 @@ function measureLineWidth(
   fontResolver?: TextPathFontResolver | null,
 ): number {
   let totalWidth = 0;
-  const jpanFallback = fontResolver ? getJpanFallbackFont() : null;
   for (const seg of segments) {
     const fontSize = (seg.properties.fontSize ?? defaultFontSize) * fontScale;
-    if (fontResolver) {
-      const fontSizePx = fontSize * PX_PER_PT;
-      const font = fontResolver.resolveFont(
-        seg.properties.fontFamily,
-        seg.properties.fontFamilyEa,
-        jpanFallback,
-        { bold: seg.properties.bold, italic: seg.properties.italic },
-        seg.text,
-      );
-      if (font) {
-        totalWidth += font.getAdvanceWidth(seg.text, fontSizePx);
-        continue;
-      }
-    }
-    totalWidth += getTextMeasurer().measureTextWidth(
-      seg.text,
-      fontSize,
-      seg.properties.bold,
-      seg.properties.fontFamily,
-      seg.properties.fontFamilyEa,
-    );
+    totalWidth += measureMixedTextWidth(seg.text, seg.properties, fontSize, fontResolver);
   }
   return totalWidth;
 }
@@ -958,6 +942,69 @@ function buildPathFillAttrs(props: RunProperties): string {
     attrs.push('fill="#000000"');
   }
   return attrs.join(" ");
+}
+
+function renderEmojiAsText(
+  text: string,
+  props: RunProperties,
+  x: number,
+  y: number,
+  fontSizePx: number,
+): { svg: string; width: number } {
+  const width = measureEmojiWidth(text, fontSizePx);
+  const fillAttrs = buildPathFillAttrs(props);
+  const svg =
+    `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" ` +
+    `font-family=${EMOJI_FONT_FAMILY} font-size="${fontSizePx.toFixed(2)}" ` +
+    `${fillAttrs}>${escapeXml(text)}</text>`;
+  return { svg, width };
+}
+
+function measurePlainTextWidth(
+  text: string,
+  props: RunProperties,
+  fontSize: number,
+  fontResolver?: TextPathFontResolver | null,
+): number {
+  const fontSizePx = fontSize * PX_PER_PT;
+  const jpanFallback = fontResolver ? getJpanFallbackFont() : null;
+  if (fontResolver) {
+    const font = fontResolver.resolveFont(
+      props.fontFamily,
+      props.fontFamilyEa,
+      jpanFallback,
+      { bold: props.bold, italic: props.italic },
+      text,
+    );
+    if (font) {
+      return font.getAdvanceWidth(text, fontSizePx);
+    }
+  }
+  return getTextMeasurer().measureTextWidth(
+    text,
+    fontSize,
+    props.bold,
+    props.fontFamily,
+    props.fontFamilyEa,
+  );
+}
+
+function measureMixedTextWidth(
+  text: string,
+  props: RunProperties,
+  fontSize: number,
+  fontResolver?: TextPathFontResolver | null,
+): number {
+  let totalWidth = 0;
+  const fontSizePx = fontSize * PX_PER_PT;
+  for (const part of splitByEmoji(text)) {
+    if (part.isEmoji) {
+      totalWidth += measureEmojiWidth(part.text, fontSizePx);
+    } else {
+      totalWidth += measurePlainTextWidth(part.text, props, fontSize, fontResolver);
+    }
+  }
+  return totalWidth;
 }
 
 /**
@@ -1029,39 +1076,72 @@ function renderSegmentAsPath(
   ) => {
     if (segText.length === 0) return;
 
-    const font = fontResolver.resolveFont(
-      fontFamily,
-      fontFamilyEa,
-      jpanFallback,
-      { bold: props.bold, italic: props.italic },
-      segText,
-    );
-    const segWidth = font
-      ? font.getAdvanceWidth(segText, fontSizePx)
-      : getTextMeasurer().measureTextWidth(
-          segText,
-          fontSize,
-          props.bold,
-          props.fontFamily,
-          props.fontFamilyEa,
+    const segmentProps: RunProperties = {
+      ...props,
+      fontFamily: fontFamily ?? props.fontFamily,
+      fontFamilyEa: fontFamilyEa ?? props.fontFamilyEa,
+    };
+
+    for (const part of splitByEmoji(segText)) {
+      if (part.isEmoji) {
+        const rendered = renderEmojiAsText(
+          part.text,
+          segmentProps,
+          x + totalWidth,
+          effectiveY,
+          fontSizePx,
         );
-
-    if (font) {
-      const path = font.getPath(segText, x + totalWidth, effectiveY, fontSizePx);
-      const pathData = path.toPathData(2);
-
-      if (pathData && pathData.length > 0) {
-        const fillAttrs = buildPathFillAttrs(props);
-        parts.push(`<path d="${pathData}" ${fillAttrs}/>`);
+        parts.push(rendered.svg);
+        if (props.underline || props.strikethrough) {
+          parts.push(
+            ...renderTextDecorations(
+              x + totalWidth,
+              effectiveY,
+              rendered.width,
+              fontSizePx,
+              props,
+            ),
+          );
+        }
+        totalWidth += rendered.width;
+        continue;
       }
-    }
 
-    // 下線・取り消し線
-    if (props.underline || props.strikethrough) {
-      parts.push(...renderTextDecorations(x + totalWidth, effectiveY, segWidth, fontSizePx, props));
-    }
+      const font = fontResolver.resolveFont(
+        segmentProps.fontFamily,
+        segmentProps.fontFamilyEa,
+        jpanFallback,
+        { bold: props.bold, italic: props.italic },
+        part.text,
+      );
+      const segWidth = font
+        ? font.getAdvanceWidth(part.text, fontSizePx)
+        : getTextMeasurer().measureTextWidth(
+            part.text,
+            fontSize,
+            props.bold,
+            segmentProps.fontFamily,
+            segmentProps.fontFamilyEa,
+          );
 
-    totalWidth += segWidth;
+      if (font) {
+        const path = font.getPath(part.text, x + totalWidth, effectiveY, fontSizePx);
+        const pathData = path.toPathData(2);
+
+        if (pathData && pathData.length > 0) {
+          const fillAttrs = buildPathFillAttrs(props);
+          parts.push(`<path d="${pathData}" ${fillAttrs}/>`);
+        }
+      }
+
+      if (props.underline || props.strikethrough) {
+        parts.push(
+          ...renderTextDecorations(x + totalWidth, effectiveY, segWidth, fontSizePx, props),
+        );
+      }
+
+      totalWidth += segWidth;
+    }
   };
 
   /**

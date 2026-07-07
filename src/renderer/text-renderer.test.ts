@@ -1125,6 +1125,16 @@ describe("renderTextBody (path mode)", () => {
     expect(result).not.toContain("<tspan");
   });
 
+  it("絵文字はカラーフォント用の <text> 要素として描画する", () => {
+    setupPathMode();
+    const textBody = makeTextBody(["Hi 👋"]);
+    const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
+    expect(result).toContain("<path");
+    expect(result).toContain("<text");
+    expect(result).toContain("Apple Color Emoji");
+    expect(result).toContain("👋");
+  });
+
   it("テキスト色が path の fill 属性に反映される", () => {
     setupPathMode();
     const textBody: TextBody = {
