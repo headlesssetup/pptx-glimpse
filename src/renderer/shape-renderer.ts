@@ -1,7 +1,7 @@
 import type { ConnectorElement, ShapeElement } from "../model/shape.js";
 import { emuToPixels } from "../utils/emu.js";
 import { renderEffects } from "./effect-renderer.js";
-import { renderFillAttrs, renderMarkers, renderOutlineAttrs } from "./fill-renderer.js";
+import { renderFillAttrs, renderLineWithArrowEndpoints, renderOutlineAttrs, isStraightConnectorGeometry } from "./fill-renderer.js";
 import { renderGeometry } from "./geometry/index.js";
 import type { RenderResult } from "./render-result.js";
 import { computeSpAutofitHeight, renderTextBody } from "./text-renderer.js";
@@ -65,30 +65,23 @@ export function renderConnector(connector: ConnectorElement): RenderResult {
   const transformAttr = buildTransformAttr(transform);
   const outlineResult = renderOutlineAttrs(outline);
   const effectResult = renderEffects(effects);
-  const markerResult = renderMarkers(outline);
 
   const defs: string[] = [];
   if (outlineResult.defs) defs.push(outlineResult.defs);
-  if (markerResult.defs) defs.push(markerResult.defs);
   if (effectResult.filterDefs) defs.push(effectResult.filterDefs);
 
   const parts: string[] = [];
   const filterAttr = effectResult.filterAttr ? ` ${effectResult.filterAttr}` : "";
-  const markerAttrs = [markerResult.startAttr, markerResult.endAttr].filter(Boolean).join(" ");
-  const markerAttrStr = markerAttrs ? ` ${markerAttrs}` : "";
-
+  const hasArrowEndpoints = outline?.headEnd || outline?.tailEnd;
+  const useLineArrows = hasArrowEndpoints && isStraightConnectorGeometry(geometry);
   const geometrySvg = renderGeometry(geometry, w, h);
+  const connectorSvg = useLineArrows
+    ? renderLineWithArrowEndpoints(0, 0, w, h, outline)
+    : geometrySvg?.replace(/^<(\w+)/, `<$1 ${outlineResult.attrs} fill="none"`) ??
+      `<line x1="0" y1="0" x2="${w}" y2="${h}" ${outlineResult.attrs} fill="none"/>`;
 
   parts.push(`<g transform="${transformAttr}"${filterAttr}>`);
-  if (geometrySvg) {
-    parts.push(
-      geometrySvg.replace(/^<(\w+)/, `<$1 ${outlineResult.attrs} fill="none"${markerAttrStr}`),
-    );
-  } else {
-    parts.push(
-      `<line x1="0" y1="0" x2="${w}" y2="${h}" ${outlineResult.attrs} fill="none"${markerAttrStr}/>`,
-    );
-  }
+  parts.push(connectorSvg);
   parts.push("</g>");
   return { content: parts.join(""), defs };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderFillAttrs, renderOutlineAttrs } from "./fill-renderer.js";
+import { renderFillAttrs, renderLineWithArrowEndpoints, renderOutlineAttrs } from "./fill-renderer.js";
 
 describe("renderFillAttrs", () => {
   it("renders null fill as none", () => {
@@ -209,5 +209,34 @@ describe("renderOutlineAttrs", () => {
     // customDash が適用される (prstDash ではなく)
     const widthPx = (12700 / 914400) * 96;
     expect(result.attrs).toContain(`stroke-dasharray="${3 * widthPx} ${1 * widthPx}"`);
+  });
+});
+
+describe("renderLineWithArrowEndpoints", () => {
+  it("renders a shortened line and filled arrowhead at the tail end", () => {
+    const result = renderLineWithArrowEndpoints(0, 0, 0, 38, {
+      width: 76200,
+      fill: { type: "solid", color: { hex: "#163e64", alpha: 1 } },
+      dashStyle: "solid",
+      headEnd: null,
+      tailEnd: { type: "triangle", width: "med", length: "med" },
+    });
+
+    expect(result).toContain('<line x1="0" y1="0" x2="0" y2="14"');
+    expect(result).toContain('<polygon points="0,38');
+    expect(result).toContain('fill="#163e64"');
+  });
+
+  it("renders arrowheads at both ends", () => {
+    const result = renderLineWithArrowEndpoints(0, 0, 100, 0, {
+      width: 12700,
+      fill: { type: "solid", color: { hex: "#163e64", alpha: 1 } },
+      dashStyle: "solid",
+      headEnd: { type: "triangle", width: "med", length: "med" },
+      tailEnd: { type: "triangle", width: "med", length: "med" },
+    });
+
+    expect(result).toContain("<polygon");
+    expect(result.match(/<polygon/g)?.length).toBe(2);
   });
 });

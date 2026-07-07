@@ -1,5 +1,6 @@
 import type { Fill, GradientFill, PatternFill } from "../model/fill.js";
 import type { ArrowEndpoint, ArrowSize, Outline } from "../model/line.js";
+import type { Geometry } from "../model/shape.js";
 import { emuToPixels } from "../utils/emu.js";
 
 interface FillAttrs {
@@ -259,93 +260,183 @@ function getPatternContent(preset: string, fg: string, fgAlpha: string): Pattern
   }
 }
 
-// --- Arrow marker rendering ---
+// --- Arrow endpoint rendering ---
 
-interface MarkerResult {
-  defs: string;
-  startAttr: string;
-  endAttr: string;
+const ARROW_LENGTH_MULT: Record<ArrowSize, number> = { sm: 2.0, med: 3.0, lg: 5.0 };
+const ARROW_WIDTH_MULT: Record<ArrowSize, number> = { sm: 2.0, med: 3.0, lg: 5.0 };
+const OPEN_ARROW_LENGTH_MULT: Record<ArrowSize, number> = { sm: 2.5, med: 3.5, lg: 5.5 };
+const OPEN_ARROW_WIDTH_MULT: Record<ArrowSize, number> = { sm: 2.5, med: 3.5, lg: 5.5 };
+// LibreOffice uses max(lineWidth, 0.7mm) as the base for arrow scaling.
+const MIN_ARROW_BASE_PX = emuToPixels(25200);
+
+interface ArrowDimensions {
+  length: number;
+  width: number;
 }
 
-const ARROW_SIZE_MAP: Record<ArrowSize, number> = {
-  sm: 5,
-  med: 8,
-  lg: 12,
-};
+function arrowBasePx(strokeWidthPx: number): number {
+  return Math.max(strokeWidthPx, MIN_ARROW_BASE_PX);
+}
 
-export function renderMarkers(outline: Outline | null): MarkerResult {
-  const empty: MarkerResult = { defs: "", startAttr: "", endAttr: "" };
-  if (!outline) return empty;
-  if (!outline.headEnd && !outline.tailEnd) return empty;
+function arrowDimensions(endpoint: ArrowEndpoint, strokeWidthPx: number): ArrowDimensions {
+  const base = arrowBasePx(strokeWidthPx);
+  const isOpenArrow = endpoint.type === "arrow";
+  return {
+    length:
+      (isOpenArrow ? OPEN_ARROW_LENGTH_MULT : ARROW_LENGTH_MULT)[endpoint.length] * base,
+    width: (isOpenArrow ? OPEN_ARROW_WIDTH_MULT : ARROW_WIDTH_MULT)[endpoint.width] * base,
+  };
+}
 
-  let color = "#000000";
-  let alpha = 1;
+function outlineStrokeColor(outline: Outline): { color: string; alpha: number } {
   if (outline.fill?.type === "solid") {
-    color = outline.fill.color.hex;
-    alpha = outline.fill.color.alpha;
-  } else if (outline.fill?.type === "gradient" && outline.fill.stops.length > 0) {
-    color = outline.fill.stops[0].color.hex;
-    alpha = outline.fill.stops[0].color.alpha;
+    return { color: outline.fill.color.hex, alpha: outline.fill.color.alpha };
   }
-  const defs: string[] = [];
-  let startAttr = "";
-  let endAttr = "";
-
-  if (outline.headEnd) {
-    const id = `marker-${crypto.randomUUID()}`;
-    const markerDef = buildMarkerDef(id, outline.headEnd, color, alpha);
-    if (markerDef) {
-      defs.push(markerDef);
-      startAttr = `marker-start="url(#${id})"`;
-    }
+  if (outline.fill?.type === "gradient" && outline.fill.stops.length > 0) {
+    return {
+      color: outline.fill.stops[0].color.hex,
+      alpha: outline.fill.stops[0].color.alpha,
+    };
   }
-
-  if (outline.tailEnd) {
-    const id = `marker-${crypto.randomUUID()}`;
-    const markerDef = buildMarkerDef(id, outline.tailEnd, color, alpha);
-    if (markerDef) {
-      defs.push(markerDef);
-      endAttr = `marker-end="url(#${id})"`;
-    }
-  }
-
-  return { defs: defs.join(""), startAttr, endAttr };
+  return { color: "#000000", alpha: 1 };
 }
 
-function buildMarkerDef(
-  id: string,
+function renderArrowDecoration(
+  anchorX: number,
+  anchorY: number,
+  dirX: number,
+  dirY: number,
+  perpX: number,
+  perpY: number,
   endpoint: ArrowEndpoint,
+  dims: ArrowDimensions,
   color: string,
   alpha: number,
 ): string | null {
-  const mw = ARROW_SIZE_MAP[endpoint.length];
-  const mh = ARROW_SIZE_MAP[endpoint.width];
   const alphaAttr = alpha < 1 ? ` opacity="${alpha}"` : "";
+  const tipX = anchorX + dirX * dims.length;
+  const tipY = anchorY + dirY * dims.length;
+  const baseX = anchorX;
+  const baseY = anchorY;
+  const halfW = dims.width / 2;
+  const leftX = baseX + perpX * halfW;
+  const leftY = baseY + perpY * halfW;
+  const rightX = baseX - perpX * halfW;
+  const rightY = baseY - perpY * halfW;
 
-  let path: string;
-  let fillAttr: string;
   switch (endpoint.type) {
     case "triangle":
-      path = `M 0 0 L ${mw} ${mh / 2} L 0 ${mh} Z`;
-      fillAttr = `fill="${color}"`;
-      break;
-    case "stealth":
-      path = `M 0 0 L ${mw} ${mh / 2} L 0 ${mh} L ${mw * 0.3} ${mh / 2} Z`;
-      fillAttr = `fill="${color}"`;
-      break;
-    case "diamond":
-      path = `M 0 ${mh / 2} L ${mw / 2} 0 L ${mw} ${mh / 2} L ${mw / 2} ${mh} Z`;
-      fillAttr = `fill="${color}"`;
-      break;
-    case "oval":
-      return `<marker id="${id}" markerWidth="${mw}" markerHeight="${mh}" refX="${mw / 2}" refY="${mh / 2}" orient="auto" markerUnits="userSpaceOnUse"><ellipse cx="${mw / 2}" cy="${mh / 2}" rx="${mw / 2}" ry="${mh / 2}" ${`fill="${color}"`}${alphaAttr}/></marker>`;
+      return `<polygon points="${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}" fill="${color}"${alphaAttr}/>`;
+    case "stealth": {
+      const notchX = baseX + dirX * dims.length * 0.3;
+      const notchY = baseY + dirY * dims.length * 0.3;
+      return `<polygon points="${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY} ${notchX},${notchY}" fill="${color}"${alphaAttr}/>`;
+    }
+    case "diamond": {
+      const midX = anchorX + dirX * (dims.length / 2);
+      const midY = anchorY + dirY * (dims.length / 2);
+      const farX = anchorX + dirX * dims.length;
+      const farY = anchorY + dirY * dims.length;
+      return `<polygon points="${anchorX},${anchorY} ${leftX},${leftY} ${farX},${farY} ${rightX},${rightY}" fill="${color}"${alphaAttr}/>`;
+    }
+    case "oval": {
+      const cx = midpoint(anchorX, tipX);
+      const cy = midpoint(anchorY, tipY);
+      const angle = Math.atan2(dirY, dirX) * (180 / Math.PI);
+      return `<ellipse cx="${cx}" cy="${cy}" rx="${dims.width / 2}" ry="${dims.length / 2}" fill="${color}"${alphaAttr} transform="rotate(${angle} ${cx} ${cy})"/>`;
+    }
     case "arrow":
-      path = `M 0 0 L ${mw} ${mh / 2} L 0 ${mh}`;
-      fillAttr = `fill="none" stroke="${color}" stroke-width="1"`;
-      break;
+      return `<polyline points="${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}" fill="none" stroke="${color}" stroke-width="1"${alphaAttr}/>`;
     default:
       return null;
   }
+}
 
-  return `<marker id="${id}" markerWidth="${mw}" markerHeight="${mh}" refX="${mw}" refY="${mh / 2}" orient="auto" markerUnits="userSpaceOnUse"><path d="${path}" ${fillAttr}${alphaAttr}/></marker>`;
+function midpoint(a: number, b: number): number {
+  return (a + b) / 2;
+}
+
+export function renderLineWithArrowEndpoints(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  outline: Outline | null,
+): string {
+  if (!outline) {
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="none" fill="none"/>`;
+  }
+
+  const strokeAttrs = renderOutlineAttrs(outline).attrs;
+  const strokeWidthPx = emuToPixels(outline.width);
+  const { color, alpha } = outlineStrokeColor(outline);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const pathLen = Math.hypot(dx, dy);
+
+  if (pathLen === 0) {
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${strokeAttrs} fill="none"/>`;
+  }
+
+  const ux = dx / pathLen;
+  const uy = dy / pathLen;
+  const perpX = -uy;
+  const perpY = ux;
+
+  let lineX1 = x1;
+  let lineY1 = y1;
+  let lineX2 = x2;
+  let lineY2 = y2;
+  const decorations: string[] = [];
+
+  if (outline.headEnd) {
+    const dims = arrowDimensions(outline.headEnd, strokeWidthPx);
+    const baseX = x1 + ux * dims.length;
+    const baseY = y1 + uy * dims.length;
+    lineX1 = baseX;
+    lineY1 = baseY;
+    const deco = renderArrowDecoration(
+      baseX,
+      baseY,
+      -ux,
+      -uy,
+      perpX,
+      perpY,
+      outline.headEnd,
+      dims,
+      color,
+      alpha,
+    );
+    if (deco) decorations.push(deco);
+  }
+
+  if (outline.tailEnd) {
+    const dims = arrowDimensions(outline.tailEnd, strokeWidthPx);
+    const baseX = x2 - ux * dims.length;
+    const baseY = y2 - uy * dims.length;
+    lineX2 = baseX;
+    lineY2 = baseY;
+    const deco = renderArrowDecoration(
+      baseX,
+      baseY,
+      ux,
+      uy,
+      perpX,
+      perpY,
+      outline.tailEnd,
+      dims,
+      color,
+      alpha,
+    );
+    if (deco) decorations.push(deco);
+  }
+
+  return [
+    `<line x1="${lineX1}" y1="${lineY1}" x2="${lineX2}" y2="${lineY2}" ${strokeAttrs} fill="none"/>`,
+    ...decorations,
+  ].join("");
+}
+
+export function isStraightConnectorGeometry(geometry: Geometry): boolean {
+  return geometry.type === "preset" && geometry.preset === "straightConnector1";
 }
