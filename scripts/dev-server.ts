@@ -5,6 +5,8 @@ import { basename, resolve } from "path";
 import { promisify } from "util";
 import { type WebSocket, WebSocketServer } from "ws";
 
+import type { DevRenderInfo, DevRenderOutput, DevSlideSvg } from "./dev-server-render.js";
+
 const DEFAULT_PORT = 3000;
 const DEFAULT_RENDER_WIDTH = 1920;
 const DEBOUNCE_MS = 300;
@@ -14,21 +16,21 @@ const MAX_BUFFER = 50 * 1024 * 1024;
 
 const execFileAsync = promisify(execFile);
 
-interface SlideSvg {
-  slideNumber: number;
-  svg: string;
+interface RenderResult {
+  slides: DevSlideSvg[];
+  info: DevRenderInfo;
 }
 
 // --- Rendering via child process ---
 
-async function renderSlides(pptxPath: string, width: number): Promise<SlideSvg[]> {
+async function renderSlides(pptxPath: string, width: number): Promise<RenderResult> {
   const workerPath = resolve("scripts/dev-server-render.ts");
   const args = ["tsx", workerPath, pptxPath, "--width", String(width)];
   const { stdout } = await execFileAsync("npx", args, {
     maxBuffer: MAX_BUFFER,
     timeout: RENDER_TIMEOUT_MS,
   });
-  return JSON.parse(stdout) as SlideSvg[];
+  return JSON.parse(stdout) as DevRenderOutput;
 }
 
 // --- WebSocket ---
@@ -63,8 +65,117 @@ function watchSourceFiles(onChange: () => void): void {
 
 // --- HTML template ---
 
-function generateHtml(slides: SlideSvg[], pptxName: string, renderWidth: number): string {
-  const slideContainerStyle = `width: ${String(renderWidth)}px; max-width: none;`;
+function generateDiagnosticsHtml(info: DevRenderInfo): string {
+  const themeLines = [
+    info.usedFonts.theme.majorFont && `Major: ${info.usedFonts.theme.majorFont}`,
+    info.usedFonts.theme.minorFont && `Minor: ${info.usedFonts.theme.minorFont}`,
+    info.usedFonts.theme.majorFontEa && `Major EA: ${info.usedFonts.theme.majorFontEa}`,
+    info.usedFonts.theme.minorFontEa && `Minor EA: ${info.usedFonts.theme.minorFontEa}`,
+  ].filter(Boolean);
+
+  const fontList = info.usedFonts.fonts
+    .map((font) => `<li>${escapeHtml(font)}</li>`)
+    .join("");
+
+  const mappingRows = info.fontMappings
+    .map(
+      (m) =>
+        `<tr><td>${escapeHtml(m.from)}</td><td class="arrow">→</td><td>${escapeHtml(m.to)}</td></tr>`,
+    )
+    .join("");
+
+  const embeddedRows = info.embeddedFonts
+    .map((font) => {
+      const status = font.loaded ? "loaded" : "missing";
+      return (
+        `<tr class="${status}">` +
+        `<td>${escapeHtml(font.typeface)}</td>` +
+        `<td>${escapeHtml(font.slots.join(", "))}</td>` +
+        `<td>${font.loaded ? "loaded" : "not loaded"}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+
+  const warningsByFeature = new Map<string, typeof info.warnings>();
+  for (const entry of info.warnings) {
+    const list = warningsByFeature.get(entry.feature) ?? [];
+    list.push(entry);
+    warningsByFeature.set(entry.feature, list);
+  }
+
+  const warningBlocks = [...warningsByFeature.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([feature, entries]) => {
+      const kind = feature.startsWith("font.")
+        ? "font"
+        : feature.startsWith("shape.")
+          ? "shape"
+          : "other";
+      const items = entries
+        .map((entry) => {
+          const ctx = entry.context ? ` <span class="ctx">(${escapeHtml(entry.context)})</span>` : "";
+          return `<li>${escapeHtml(entry.message)}${ctx}</li>`;
+        })
+        .join("");
+      return (
+        `<div class="warn-group warn-${kind}">` +
+        `<div class="warn-title">${escapeHtml(feature)} <span class="count">×${String(entries.length)}</span></div>` +
+        `<ul>${items}</ul>` +
+        `</div>`
+      );
+    })
+    .join("");
+
+  const warningSection =
+    info.warnings.length > 0
+      ? warningBlocks
+      : '<p class="empty">No warnings — full fidelity (or logLevel off).</p>';
+
+  return (
+    `<section class="diag-section">` +
+    `<h2>Render</h2>` +
+    `<dl>` +
+    `<dt>Width</dt><dd>${String(info.renderWidth)}px</dd>` +
+    `<dt>Slides</dt><dd>${String(info.slideCount)}</dd>` +
+    `<dt>Warnings</dt><dd>${String(info.warningSummary.totalCount)}</dd>` +
+    `</dl>` +
+    `</section>` +
+    `<section class="diag-section">` +
+    `<h2>Fonts in deck</h2>` +
+    (themeLines.length > 0 ? `<div class="theme">${themeLines.map((l) => `<div>${escapeHtml(l)}</div>`).join("")}</div>` : "") +
+    `<ul class="font-list">${fontList}</ul>` +
+    `</section>` +
+    `<section class="diag-section">` +
+    `<h2>Font replacements</h2>` +
+    (info.fontMappings.length > 0
+      ? `<table class="diag-table"><tbody>${mappingRows}</tbody></table>`
+      : '<p class="empty">No mapped replacements for fonts in this deck.</p>') +
+    `</section>` +
+    `<section class="diag-section">` +
+    `<h2>Embedded fonts</h2>` +
+    (info.embeddedFonts.length > 0
+      ? `<table class="diag-table"><thead><tr><th>Typeface</th><th>Slots</th><th>Status</th></tr></thead><tbody>${embeddedRows}</tbody></table>`
+      : '<p class="empty">No embedded fonts in this deck.</p>') +
+    `</section>` +
+    `<section class="diag-section">` +
+    `<h2>Render log</h2>` +
+    `<p class="hint">Skipped features, fallbacks, and substitutions from the last render.</p>` +
+    `<div class="warn-list">${warningSection}</div>` +
+    `</section>`
+  );
+}
+
+function generateHtml(
+  slides: DevSlideSvg[],
+  pptxName: string,
+  renderWidth: number,
+  info: DevRenderInfo,
+): string {
+  const slideContainerStyle =
+    renderWidth !== undefined
+      ? `width: ${String(renderWidth)}px; max-width: none;`
+      : "max-width: 100%; max-height: 100%;";
   const thumbnailsHtml = slides
     .map(
       (s, i) =>
@@ -104,6 +215,7 @@ function generateHtml(slides: SlideSvg[], pptxName: string, renderWidth: number)
     #main { display: flex; height: calc(100vh - 48px); }
     #sidebar {
       width: 180px;
+      flex-shrink: 0;
       overflow-y: auto;
       background: #16213e;
       padding: 8px;
@@ -129,12 +241,75 @@ function generateHtml(slides: SlideSvg[], pptxName: string, renderWidth: number)
     .thumb-svg svg { width: 100%; height: auto; display: block; }
     #viewer {
       flex: 1;
+      min-width: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
       overflow: auto;
     }
+    #diagnostics {
+      width: 340px;
+      flex-shrink: 0;
+      overflow-y: auto;
+      background: #12122a;
+      border-left: 1px solid #2a2a4a;
+      padding: 12px 14px;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    #diagnostics h2 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #8a8ab8;
+      margin: 0 0 8px;
+    }
+    .diag-section {
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .diag-section:last-child { border-bottom: none; margin-bottom: 0; }
+    #diagnostics dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 2px 10px;
+    }
+    #diagnostics dt { color: #666; }
+    #diagnostics dd { color: #d0d0e8; margin: 0; }
+    .theme { color: #888; margin-bottom: 6px; }
+    .font-list { padding-left: 16px; color: #c8c8e0; }
+    .font-list li { margin-bottom: 2px; }
+    .diag-table { width: 100%; border-collapse: collapse; }
+    .diag-table th, .diag-table td {
+      text-align: left;
+      padding: 3px 4px;
+      vertical-align: top;
+      border-bottom: 1px solid #22223d;
+    }
+    .diag-table th { color: #666; font-weight: 600; }
+    .diag-table .arrow { color: #4472c4; width: 16px; text-align: center; }
+    .diag-table tr.missing td { color: #f44336; }
+    .diag-table tr.loaded td:last-child { color: #4caf50; }
+    .empty { color: #555; font-style: italic; }
+    .hint { color: #555; margin-bottom: 8px; }
+    .warn-list { display: flex; flex-direction: column; gap: 8px; }
+    .warn-group {
+      background: #1a1a32;
+      border-radius: 4px;
+      padding: 8px;
+      border-left: 3px solid #555;
+    }
+    .warn-group.warn-font { border-left-color: #ff9800; }
+    .warn-group.warn-shape { border-left-color: #9c27b0; }
+    .warn-group.warn-other { border-left-color: #607d8b; }
+    .warn-title { font-weight: 600; color: #b0b0d0; margin-bottom: 4px; }
+    .warn-title .count { color: #666; font-weight: 400; }
+    .warn-group ul { padding-left: 16px; color: #999; }
+    .warn-group li { margin-bottom: 2px; }
+    .warn-group .ctx { color: #666; }
     #slide-container {
       background: #fff;
       border-radius: 4px;
@@ -161,6 +336,7 @@ function generateHtml(slides: SlideSvg[], pptxName: string, renderWidth: number)
     <div id="viewer">
       <div id="slide-container">${firstSvg}</div>
     </div>
+    <aside id="diagnostics">${generateDiagnosticsHtml(info)}</aside>
   </div>
   <div id="info">Slide 1 / ${String(slides.length)}</div>
   <script>
@@ -262,14 +438,14 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// --- Main ---
+
 function parseWidthArg(argv: string[]): number | undefined {
   const idx = argv.indexOf("--width");
   if (idx === -1) return undefined;
   const value = Number(argv[idx + 1]);
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
-
-// --- Main ---
 
 async function main(): Promise<void> {
   const pptxPath = process.argv[2];
@@ -291,13 +467,16 @@ async function main(): Promise<void> {
   console.log(`Loading: ${resolvedPath}`);
   console.log(`Render width: ${String(width)}px`);
 
-  let slides = await renderSlides(resolvedPath, width);
+  const renderResult = await renderSlides(resolvedPath, width);
+  let slides = renderResult.slides;
+  let renderInfo = renderResult.info;
   console.log(`Rendered ${String(slides.length)} slide(s)`);
+  console.log(`Warnings: ${String(renderInfo.warningSummary.totalCount)}`);
 
   const server = createServer((req, res) => {
     if (req.url === "/" || req.url === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(generateHtml(slides, pptxName, width));
+      res.end(generateHtml(slides, pptxName, width, renderInfo));
     } else {
       res.writeHead(404);
       res.end("Not Found");
@@ -325,8 +504,10 @@ async function main(): Promise<void> {
 
     renderSlides(resolvedPath, width)
       .then((result) => {
-        slides = result;
+        slides = result.slides;
+        renderInfo = result.info;
         console.log(`Re-rendered ${String(slides.length)} slide(s)`);
+        console.log(`Warnings: ${String(renderInfo.warningSummary.totalCount)}`);
         broadcast(wss, { type: "reload" });
       })
       .catch((err: unknown) => {
