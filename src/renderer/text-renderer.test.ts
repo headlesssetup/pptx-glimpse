@@ -40,8 +40,8 @@ function defaultParagraphProperties(
   return {
     alignment: "l",
     lineSpacing: null,
-    spaceBefore: { type: "pts", value: 0 },
-    spaceAfter: { type: "pts", value: 0 },
+    spaceBefore: null,
+    spaceAfter: null,
     level: 0,
     bullet: null,
     bulletFont: null,
@@ -1161,6 +1161,54 @@ describe("renderTextBody (path mode)", () => {
     };
     const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
     expect(result).toContain('fill="#FF0000"');
+  });
+
+  it("Corbel Light + bold では faux bold 用の stroke を付与する", () => {
+    const corbelLight = createMockFont("Corbel Light");
+    const fonts = new Map([["Corbel Light", corbelLight]]);
+    setTextPathFontResolver(new DefaultTextPathFontResolver(fonts, corbelLight));
+
+    const textBody: TextBody = {
+      bodyProperties: {
+        anchor: "t",
+        marginLeft: 91440,
+        marginRight: 91440,
+        marginTop: 45720,
+        marginBottom: 45720,
+        wrap: "square",
+        autoFit: "noAutofit",
+        fontScale: 1,
+        lnSpcReduction: 0,
+        numCol: 1,
+        vert: "horz",
+      },
+      paragraphs: [
+        {
+          runs: [
+            {
+              text: "Bold Light",
+              properties: {
+                fontSize: 50,
+                fontFamily: "Corbel Light",
+                fontFamilyEa: null,
+                bold: true,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+                color: { hex: "#163e64", alpha: 1 },
+                baseline: 0,
+              },
+            },
+          ],
+          properties: defaultParagraphProperties(),
+        },
+      ],
+    };
+
+    const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
+    expect(result).toContain('stroke="#163e64"');
+    expect(result).toContain('paint-order="stroke fill"');
+    expect(result).toContain('stroke-width="');
   });
 
   it("透明度が fill-opacity に反映される", () => {

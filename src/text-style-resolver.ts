@@ -144,6 +144,35 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
       }
     }
 
+    // 行間・段落間隔の継承解決
+    if (
+      paragraph.properties.lineSpacing === null ||
+      paragraph.properties.spaceBefore === null ||
+      paragraph.properties.spaceAfter === null
+    ) {
+      for (const source of chainSources) {
+        if (!source) continue;
+        const levelProps = source.levels[level] ?? source.defaultParagraph;
+        if (!levelProps) continue;
+        if (paragraph.properties.lineSpacing === null && levelProps.lineSpacing !== undefined) {
+          paragraph.properties.lineSpacing = levelProps.lineSpacing;
+        }
+        if (paragraph.properties.spaceBefore === null && levelProps.spaceBefore !== undefined) {
+          paragraph.properties.spaceBefore = levelProps.spaceBefore;
+        }
+        if (paragraph.properties.spaceAfter === null && levelProps.spaceAfter !== undefined) {
+          paragraph.properties.spaceAfter = levelProps.spaceAfter;
+        }
+        if (
+          paragraph.properties.lineSpacing !== null &&
+          paragraph.properties.spaceBefore !== null &&
+          paragraph.properties.spaceAfter !== null
+        ) {
+          break;
+        }
+      }
+    }
+
     for (const run of paragraph.runs) {
       const props = run.properties;
 

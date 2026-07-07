@@ -50,6 +50,7 @@ import { parseTable } from "./table-parser.js";
 import {
   parseDefaultRunProperties,
   parseListStyle,
+  parseSpacingValue,
   isThemeFontToken,
   normalizeBulletFont,
   resolveThemeFont,
@@ -1408,16 +1409,8 @@ function parseBullet(pPr: XmlNode | undefined, colorResolver: ColorResolver) {
   return { bullet, bulletFont, bulletColor, bulletSizePct };
 }
 
-function parseSpacing(spc: XmlNode | undefined): SpacingValue {
-  if (spc?.spcPts) {
-    const spcPts = spc.spcPts as XmlNode;
-    return { type: "pts", value: asHundredthPt(Number(spcPts["@_val"])) };
-  }
-  if (spc?.spcPct) {
-    const spcPct = spc.spcPct as XmlNode;
-    return { type: "pct", value: Number(spcPct["@_val"]) };
-  }
-  return { type: "pts", value: asHundredthPt(0) };
+function parseSpacing(spc: XmlNode | undefined): SpacingValue | null {
+  return parseSpacingValue(spc);
 }
 
 function parseTabStops(pPr: XmlNode | undefined): TabStop[] {
@@ -1499,9 +1492,13 @@ function parseParagraph(
   const tabStops = parseTabStops(pPr);
   const properties = {
     alignment: (pPr?.["@_algn"] as "l" | "ctr" | "r" | "just") ?? lstLevelProps?.alignment ?? null,
-    lineSpacing: lnSpcSpcPct ? Number(lnSpcSpcPct["@_val"]) : null,
-    spaceBefore: parseSpacing(pPr?.spcBef as XmlNode | undefined),
-    spaceAfter: parseSpacing(pPr?.spcAft as XmlNode | undefined),
+    lineSpacing: lnSpcSpcPct
+      ? Number(lnSpcSpcPct["@_val"])
+      : (lstLevelProps?.lineSpacing ?? null),
+    spaceBefore:
+      parseSpacing(pPr?.spcBef as XmlNode | undefined) ?? lstLevelProps?.spaceBefore ?? null,
+    spaceAfter:
+      parseSpacing(pPr?.spcAft as XmlNode | undefined) ?? lstLevelProps?.spaceAfter ?? null,
     level,
     bullet: bullet ?? lstLevelProps?.bullet ?? null,
   // buFont の "+mj-lt" 等はランのフォント継承を意味するため実フォント名には解決しない

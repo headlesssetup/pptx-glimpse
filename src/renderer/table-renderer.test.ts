@@ -242,8 +242,8 @@ describe("renderTable", () => {
                       properties: {
                         alignment: "l",
                         lineSpacing: null,
-                        spaceBefore: 0,
-                        spaceAfter: 0,
+                        spaceBefore: null,
+                        spaceAfter: null,
                         level: 0,
                       },
                     },

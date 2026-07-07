@@ -1,8 +1,12 @@
 import { getCurrentMappedFont } from "../font/font-mapping-context.js";
 import { getJpanFallbackFont } from "../font/script-font-context.js";
 import { getTextMeasurer } from "../font/text-measurer.js";
-import type { TextPathFontResolver } from "../font/text-path-context.js";
-import { getTextPathFontResolver } from "../font/text-path-context.js";
+import type { OpentypeFullFont, TextPathFontResolver } from "../font/text-path-context.js";
+import {
+  getTextPathFontResolver,
+  needsSyntheticBold,
+  SYNTHETIC_BOLD_STROKE_RATIO,
+} from "../font/text-path-context.js";
 import type { Transform } from "../model/shape.js";
 import type {
   AutoNumScheme,
@@ -957,6 +961,43 @@ function buildPathFillAttrs(props: RunProperties): string {
   return attrs.join(" ");
 }
 
+function measureResolvedFontWidth(
+  font: OpentypeFullFont,
+  text: string,
+  fontSizePx: number,
+  _bold: boolean,
+): number {
+  // PowerPoint の faux bold はレイアウト幅を変えない (ベースフェイスの advance を使う)
+  return font.getAdvanceWidth(text, fontSizePx);
+}
+
+/**
+ * テキスト path を SVG 要素に変換する。
+ * Bold 指定だが実フェイスが Regular (例: Corbel Light + b=1) のときは
+ * PowerPoint と同様に stroke ベースの faux bold を適用する。
+ */
+function buildTextPathElement(
+  pathData: string,
+  fillAttrs: string,
+  fontSizePx: number,
+  bold: boolean,
+  font: OpentypeFullFont,
+): string {
+  if (!needsSyntheticBold(bold, font)) {
+    return `<path d="${pathData}" ${fillAttrs}/>`;
+  }
+  const strokeWidth = Math.max(0.5, fontSizePx * SYNTHETIC_BOLD_STROKE_RATIO);
+  const strokeMatch = fillAttrs.match(/fill="([^"]+)"/);
+  const fillColor = strokeMatch?.[1] ?? "#000000";
+  const opacityMatch = fillAttrs.match(/fill-opacity="([^"]+)"/);
+  const opacityAttr = opacityMatch ? ` stroke-opacity="${opacityMatch[1]}"` : "";
+  return (
+    `<path d="${pathData}" ${fillAttrs} stroke="${fillColor}" ` +
+    `stroke-width="${strokeWidth.toFixed(2)}" paint-order="stroke fill" ` +
+    `stroke-linejoin="round"${opacityAttr}/>`
+  );
+}
+
 function renderEmojiAsText(
   text: string,
   props: RunProperties,
@@ -990,7 +1031,7 @@ function measurePlainTextWidth(
       text,
     );
     if (font) {
-      return font.getAdvanceWidth(text, fontSizePx);
+      return measureResolvedFontWidth(font, text, fontSizePx, props.bold);
     }
   }
   return getTextMeasurer().measureTextWidth(
@@ -1128,7 +1169,7 @@ function renderSegmentAsPath(
         part.text,
       );
       const segWidth = font
-        ? font.getAdvanceWidth(part.text, fontSizePx)
+        ? measureResolvedFontWidth(font, part.text, fontSizePx, props.bold)
         : getTextMeasurer().measureTextWidth(
             part.text,
             fontSize,
@@ -1143,7 +1184,7 @@ function renderSegmentAsPath(
 
         if (pathData && pathData.length > 0) {
           const fillAttrs = buildPathFillAttrs(props);
-          parts.push(`<path d="${pathData}" ${fillAttrs}/>`);
+          parts.push(buildTextPathElement(pathData, fillAttrs, fontSizePx, props.bold, font));
         }
       }
 
@@ -1180,7 +1221,7 @@ function renderSegmentAsPath(
 
     for (const char of segText) {
       const charWidth = font
-        ? font.getAdvanceWidth(char, fontSizePx)
+        ? measureResolvedFontWidth(font, char, fontSizePx, props.bold)
         : getTextMeasurer().measureTextWidth(
             char,
             fontSize,
@@ -1195,12 +1236,12 @@ function renderSegmentAsPath(
         const pathData = path.toPathData(2);
 
         if (pathData && pathData.length > 0) {
-          // 回転中心: 文字の中心点
+          const fillAttrs = buildPathFillAttrs(props);
           const cx = charX + charWidth / 2;
           const cy =
             effectiveY - (fontSizePx * (font.ascender + font.descender)) / 2 / font.unitsPerEm;
           parts.push(
-            `<g transform="rotate(-90, ${cx.toFixed(2)}, ${cy.toFixed(2)})"><path d="${pathData}" ${fillAttrs}/></g>`,
+            `<g transform="rotate(-90, ${cx.toFixed(2)}, ${cy.toFixed(2)})">${buildTextPathElement(pathData, fillAttrs, fontSizePx, props.bold, font)}</g>`,
           );
         }
       }
@@ -1288,6 +1329,7 @@ function renderBulletAsPath(
       );
   if (!font) return [];
 
+  const bold = runProps?.bold ?? false;
   const path = font.getPath(bulletText, x, y, fontSizePx);
   const pathData = path.toPathData(2);
   if (!pathData || pathData.length === 0) return [];
@@ -1303,7 +1345,7 @@ function renderBulletAsPath(
     attrs.push('fill="#000000"');
   }
 
-  return [`<path d="${pathData}" ${attrs.join(" ")}/>`];
+  return [buildTextPathElement(pathData, attrs.join(" "), fontSizePx, bold, font)];
 }
 
 /**

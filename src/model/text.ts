@@ -18,6 +18,9 @@ export interface DefaultRunProperties {
 /** defaultTextStyle の各レベルに対応するデフォルト段落プロパティ */
 export interface DefaultParagraphLevelProperties {
   alignment?: "l" | "ctr" | "r" | "just";
+  lineSpacing?: number;
+  spaceBefore?: SpacingValue;
+  spaceAfter?: SpacingValue;
   marginLeft?: Emu;
   indent?: Emu;
   bullet?: BulletType;
@@ -112,8 +115,8 @@ export interface TabStop {
 export interface ParagraphProperties {
   alignment: "l" | "ctr" | "r" | "just" | null;
   lineSpacing: number | null;
-  spaceBefore: SpacingValue;
-  spaceAfter: SpacingValue;
+  spaceBefore: SpacingValue | null;
+  spaceAfter: SpacingValue | null;
   level: number;
   bullet: BulletType | null;
   bulletFont: string | null;

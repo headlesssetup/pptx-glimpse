@@ -49,8 +49,8 @@ function makeShape(overrides: Partial<ShapeElement> = {}): ShapeElement {
           properties: {
             alignment: "l",
             lineSpacing: null,
-            spaceBefore: { type: "pts", value: 0 },
-            spaceAfter: { type: "pts", value: 0 },
+            spaceBefore: null,
+            spaceAfter: null,
             level: 0,
             bullet: null,
             bulletFont: null,
@@ -153,6 +153,35 @@ describe("applyTextStyleInheritance", () => {
 
       expect(shape.textBody!.paragraphs[0].runs[0].properties.fontSize).toBe(16);
       expect(shape.textBody!.paragraphs[0].runs[0].properties.fontFamily).toBe("Calibri");
+    });
+
+    it("lineSpacing / spaceBefore / spaceAfter を txStyles から継承する", () => {
+      const shape = makeShape({ placeholderType: "body" });
+      const context = makeContext({
+        txStyles: {
+          bodyStyle: {
+            levels: [
+              {
+                lineSpacing: 90000,
+                spaceBefore: { type: "pts", value: 1000 },
+                spaceAfter: { type: "pts", value: 500 },
+              },
+            ],
+          },
+        },
+      });
+
+      applyTextStyleInheritance([shape], context);
+
+      expect(shape.textBody!.paragraphs[0].properties.lineSpacing).toBe(90000);
+      expect(shape.textBody!.paragraphs[0].properties.spaceBefore).toEqual({
+        type: "pts",
+        value: 1000,
+      });
+      expect(shape.textBody!.paragraphs[0].properties.spaceAfter).toEqual({
+        type: "pts",
+        value: 500,
+      });
     });
   });
 
@@ -570,8 +599,8 @@ describe("applyTextStyleInheritance", () => {
         properties: {
           alignment: "l",
           lineSpacing: null,
-          spaceBefore: { type: "pts", value: 0 },
-          spaceAfter: { type: "pts", value: 0 },
+          spaceBefore: null,
+          spaceAfter: null,
           level: 1,
           bullet: null,
           bulletFont: null,

@@ -4,6 +4,7 @@ import type {
   DefaultParagraphLevelProperties,
   DefaultRunProperties,
   DefaultTextStyle,
+  SpacingValue,
 } from "../model/text.js";
 import type { FontScheme } from "../model/theme.js";
 import { hundredthPointToPoint } from "../utils/emu.js";
@@ -59,6 +60,19 @@ export function parseDefaultRunProperties(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+export function parseSpacingValue(spc: XmlNode | undefined): SpacingValue | null {
+  if (!spc) return null;
+  if (spc.spcPts) {
+    const spcPts = spc.spcPts as XmlNode;
+    return { type: "pts", value: asHundredthPt(Number(spcPts["@_val"])) };
+  }
+  if (spc.spcPct) {
+    const spcPct = spc.spcPct as XmlNode;
+    return { type: "pct", value: Number(spcPct["@_val"]) };
+  }
+  return null;
+}
+
 const VALID_AUTO_NUM_SCHEMES = new Set([
   "arabicPeriod",
   "arabicParenR",
@@ -87,6 +101,20 @@ export function parseParagraphLevelProperties(
   }
   if (node["@_indent"] !== undefined) {
     result.indent = asEmu(Number(node["@_indent"]));
+  }
+
+  const lnSpc = node.lnSpc as XmlNode | undefined;
+  const lnSpcSpcPct = lnSpc?.spcPct as XmlNode | undefined;
+  if (lnSpcSpcPct) {
+    result.lineSpacing = Number(lnSpcSpcPct["@_val"]);
+  }
+  const spaceBefore = parseSpacingValue(node.spcBef as XmlNode | undefined);
+  if (spaceBefore) {
+    result.spaceBefore = spaceBefore;
+  }
+  const spaceAfter = parseSpacingValue(node.spcAft as XmlNode | undefined);
+  if (spaceAfter) {
+    result.spaceAfter = spaceAfter;
   }
 
   // Bullet の解析

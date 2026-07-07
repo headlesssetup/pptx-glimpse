@@ -168,11 +168,8 @@ export function detectOpentypeFontStyle(font: OpentypeFullFont): { bold: boolean
   return { bold, italic };
 }
 
-/** 太字指定だが実フェイスが Regular のときの幅倍率 (PowerPoint の faux bold に合わせる) */
-export const SYNTHETIC_BOLD_WIDTH_FACTOR = 1.05;
-
 /** faux bold 用ストローク幅 (font size px に対する比率) */
-export const SYNTHETIC_BOLD_STROKE_RATIO = 0.04;
+export const SYNTHETIC_BOLD_STROKE_RATIO = 0.025;
 
 /** 太字指定だが解決されたフォントが Bold フェイスでない場合に true */
 export function needsSyntheticBold(requestedBold: boolean, font: OpentypeFullFont): boolean {
