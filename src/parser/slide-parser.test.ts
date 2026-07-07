@@ -681,6 +681,61 @@ describe("bullet parsing", () => {
     expect(para.properties.bullet).toEqual({ type: "char", char: "v" });
   });
 
+  it("treats buFont theme tokens as null so bullets inherit run font", () => {
+    const xml = `
+      <p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:sp>
+          <p:nvSpPr>
+            <p:cNvPr id="2" name="TextBox 1"/>
+            <p:cNvSpPr/>
+            <p:nvPr/>
+          </p:nvSpPr>
+          <p:spPr>
+            <a:xfrm>
+              <a:off x="100" y="200"/>
+              <a:ext cx="300" cy="400"/>
+            </a:xfrm>
+            <a:prstGeom prst="rect"/>
+          </p:spPr>
+          <p:txBody>
+            <a:bodyPr/>
+            <a:p>
+              <a:pPr>
+                <a:buFont typeface="+mj-lt"/>
+                <a:buAutoNum type="arabicPeriod"/>
+              </a:pPr>
+              <a:r>
+                <a:rPr lang="en-US" sz="1800">
+                  <a:latin typeface="Corbel Light"/>
+                </a:rPr>
+                <a:t>Numbered item</a:t>
+              </a:r>
+            </a:p>
+          </p:txBody>
+        </p:sp>
+      </p:spTree>
+    `;
+    const parsed = parseXml(xml);
+    const elements = parseShapeTree(
+      parsed.spTree as XmlNode | undefined,
+      new Map(),
+      "ppt/slides/slide1.xml",
+      createEmptyArchive(),
+      createColorResolver(),
+    );
+
+    const shape = elements[0] as ShapeElement;
+    const para = shape.textBody!.paragraphs[0];
+    expect(para.properties.bulletFont).toBeNull();
+    expect(para.properties.bulletInheritRunFont).toBe(true);
+    expect(para.properties.bullet).toEqual({
+      type: "autoNum",
+      scheme: "arabicPeriod",
+      startAt: 1,
+    });
+  });
+
   it("defaults bullet to null when no bullet element is present", () => {
     const xml = `
       <p:spTree xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"

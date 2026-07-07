@@ -493,6 +493,32 @@ describe("parse-render integration: bullets", () => {
     expect(svg).toContain("\u2022");
   });
 
+  it("buFont +mj-lt の番号はテキストランのフォントと色を継承する", () => {
+    const xml = buildShapeXml(`
+      <p:txBody>
+        <a:bodyPr/>
+        <a:p>
+          <a:pPr marL="342900" indent="-342900">
+            <a:buFont typeface="+mj-lt"/>
+            <a:buAutoNum type="arabicPeriod"/>
+          </a:pPr>
+          <a:r>
+            <a:rPr lang="en-US" sz="1800">
+              <a:solidFill><a:srgbClr val="163E64"/></a:solidFill>
+              <a:latin typeface="Corbel Light"/>
+            </a:rPr>
+            <a:t>Item</a:t>
+          </a:r>
+        </a:p>
+      </p:txBody>
+    `);
+    const { svg } = parseAndRenderShape(xml);
+    expect(svg).toContain("1.");
+    expect(svg).toContain("Corbel Light");
+    expect(svg).toContain('fill="#163E64"');
+    expect(svg).not.toContain("Aptos");
+  });
+
   it("buSzPct → 箇条書きの font-size がスケーリングされる", () => {
     const xml = buildShapeXml(`
       <p:txBody>

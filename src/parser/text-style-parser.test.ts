@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { ColorResolver } from "../color/color-resolver.js";
 import {
+  isThemeFontToken,
+  normalizeBulletFont,
   parseDefaultRunProperties,
   parseListStyle,
   parseParagraphLevelProperties,
@@ -135,6 +137,17 @@ describe("parseParagraphLevelProperties", () => {
     expect(result?.indent).toBe(-228600);
   });
 
+  it("parses line spacing and paragraph spacing", () => {
+    const result = parseParagraphLevelProperties({
+      lnSpc: { spcPct: { "@_val": "90000" } },
+      spcBef: { spcPts: { "@_val": "1000" } },
+      spcAft: { spcPts: { "@_val": "500" } },
+    });
+    expect(result?.lineSpacing).toBe(90000);
+    expect(result?.spaceBefore).toEqual({ type: "pts", value: 1000 });
+    expect(result?.spaceAfter).toEqual({ type: "pts", value: 500 });
+  });
+
   it("parses nested defRPr", () => {
     const result = parseParagraphLevelProperties({
       "@_algn": "l",
@@ -192,5 +205,18 @@ describe("parseListStyle", () => {
     expect(result).toBeDefined();
     expect(result!.defaultParagraph).toBeUndefined();
     expect(result!.levels[0]?.defaultRunProperties?.fontSize).toBe(32);
+  });
+});
+
+describe("normalizeBulletFont", () => {
+  it("returns null for theme font tokens", () => {
+    expect(isThemeFontToken("+mj-lt")).toBe(true);
+    expect(normalizeBulletFont("+mj-lt")).toBeNull();
+    expect(normalizeBulletFont("+mn-lt")).toBeNull();
+  });
+
+  it("preserves explicit font names", () => {
+    expect(normalizeBulletFont("Arial")).toBe("Arial");
+    expect(normalizeBulletFont("Corbel Light")).toBe("Corbel Light");
   });
 });

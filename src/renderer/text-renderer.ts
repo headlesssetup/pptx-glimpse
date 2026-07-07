@@ -1,4 +1,3 @@
-import { getMetricsFallbackFont } from "../data/font-metrics.js";
 import { getCurrentMappedFont } from "../font/font-mapping-context.js";
 import { getJpanFallbackFont } from "../font/script-font-context.js";
 import { getTextMeasurer } from "../font/text-measurer.js";
@@ -216,7 +215,12 @@ export function renderTextBody(textBody: TextBody, transform: Transform): string
             getLineSpacing(para, lnSpcReduction),
             paragraphGapPx,
           );
-          const bulletStyles = buildBulletStyleAttrs(para.properties, lineFontSize, fontScale);
+          const bulletStyles = buildBulletStyleAttrs(
+            para.properties,
+            lineFontSize,
+            fontScale,
+            line.segments[0]?.properties,
+          );
           tspans.push(
             `<tspan x="${bulletX}" dy="${dy}" text-anchor="start" ${bulletStyles}>${escapeXml(bulletText)}</tspan>`,
           );
@@ -264,7 +268,12 @@ export function renderTextBody(textBody: TextBody, transform: Transform): string
           getLineSpacing(para, lnSpcReduction),
           paragraphGapPx,
         );
-        const bulletStyles = buildBulletStyleAttrs(para.properties, fontSize, fontScale);
+        const bulletStyles = buildBulletStyleAttrs(
+          para.properties,
+          fontSize,
+          fontScale,
+          firstRun?.properties,
+        );
         tspans.push(
           `<tspan x="${bulletX}" dy="${dy}" text-anchor="start" ${bulletStyles}>${escapeXml(bulletText)}</tspan>`,
         );
@@ -422,27 +431,37 @@ function buildBulletStyleAttrs(
   props: ParagraphProperties,
   textFontSizePt: number,
   fontScale: number,
+  runProps?: RunProperties,
 ): string {
   const styles: string[] = [];
 
-  if (props.bulletSizePct !== null) {
-    const size = textFontSizePt * (props.bulletSizePct / 100000);
-    styles.push(`font-size="${size}pt"`);
+  const fontSize =
+    props.bulletSizePct !== null
+      ? textFontSizePt * (props.bulletSizePct / 100000)
+      : textFontSizePt;
+  styles.push(`font-size="${fontSize}pt"`);
+
+  const bulletFont = props.bulletFont ?? runProps?.fontFamily ?? null;
+  const fontFamilyValue = buildFontFamilyValue([bulletFont, runProps?.fontFamilyEa ?? null]);
+  if (fontFamilyValue) {
+    styles.push(`font-family="${fontFamilyValue}"`);
   }
 
-  if (props.bulletFont) {
-    styles.push(`font-family="${escapeXml(props.bulletFont)}"`);
-  }
-
-  if (props.bulletColor) {
-    styles.push(`fill="${props.bulletColor.hex}"`);
-    if (props.bulletColor.alpha < 1) {
-      styles.push(`fill-opacity="${props.bulletColor.alpha}"`);
+  const color = props.bulletColor ?? runProps?.color ?? null;
+  if (color) {
+    styles.push(`fill="${color.hex}"`);
+    if (color.alpha < 1) {
+      styles.push(`fill-opacity="${color.alpha}"`);
     }
   }
 
-  // fontScale が 1 でない場合、サイズ未指定なら textFontSizePt をそのまま使用
-  // (textFontSizePt は既に fontScale 適用済み)
+  if (runProps?.bold) {
+    styles.push(`font-weight="bold"`);
+  }
+  if (runProps?.italic) {
+    styles.push(`font-style="italic"`);
+  }
+
   void fontScale;
 
   return styles.join(" ");
@@ -476,7 +495,8 @@ function getLineSpacing(para: Paragraph, lnSpcReduction: number = 0): number {
   return spacing * (1 - lnSpcReduction);
 }
 
-function resolveSpacingPx(spacing: SpacingValue, fontSizePt: number): number {
+function resolveSpacingPx(spacing: SpacingValue | null, fontSizePt: number): number {
+  if (!spacing) return 0;
   if (spacing.type === "pts") {
     return (spacing.value / 100) * PX_PER_PT;
   }
@@ -615,18 +635,11 @@ export function buildFontFamilyValue(fonts: (string | null)[]): string | null {
       seen.add(font);
       uniqueFonts.push(font);
 
-      // マッピングテーブルから OSS 代替フォントを追加
+      // ユーザー指定の fontMapping による代替フォントのみ追加
       const mapped = getCurrentMappedFont(font);
       if (mapped && !seen.has(mapped)) {
         seen.add(mapped);
         uniqueFonts.push(mapped);
-      }
-
-      // メトリクス互換 OSS フォントをフォールバックとして追加
-      const fallback = getMetricsFallbackFont(font);
-      if (fallback && !seen.has(fallback)) {
-        seen.add(fallback);
-        uniqueFonts.push(fallback);
       }
     }
   }
@@ -1247,8 +1260,7 @@ function renderBulletAsPath(
   textFontSizePt: number,
   fontScale: number,
   fontResolver: TextPathFontResolver,
-  runFontFamily?: string | null,
-  runFontFamilyEa?: string | null,
+  runProps?: RunProperties,
 ): string[] {
   let bulletFontSize = textFontSizePt;
   if (paraProps.bulletSizePct !== null) {
@@ -1256,14 +1268,22 @@ function renderBulletAsPath(
   }
   const fontSizePx = bulletFontSize * PX_PER_PT;
 
+  const fontStyle = { bold: runProps?.bold ?? false, italic: runProps?.italic ?? false };
+
   // bulletFont が指定されている場合はそれを使用し、未指定の場合はテキストランのフォントにフォールバック
   const font = paraProps.bulletFont
-    ? fontResolver.resolveFont(paraProps.bulletFont, null, undefined, undefined, bulletText)
+    ? fontResolver.resolveFont(
+        paraProps.bulletFont,
+        null,
+        undefined,
+        fontStyle,
+        bulletText,
+      )
     : fontResolver.resolveFont(
-        runFontFamily ?? null,
-        runFontFamilyEa ?? null,
+        runProps?.fontFamily ?? null,
+        runProps?.fontFamilyEa ?? null,
         undefined,
-        undefined,
+        fontStyle,
         bulletText,
       );
   if (!font) return [];
@@ -1273,10 +1293,11 @@ function renderBulletAsPath(
   if (!pathData || pathData.length === 0) return [];
 
   const attrs: string[] = [];
-  if (paraProps.bulletColor) {
-    attrs.push(`fill="${paraProps.bulletColor.hex}"`);
-    if (paraProps.bulletColor.alpha < 1) {
-      attrs.push(`fill-opacity="${paraProps.bulletColor.alpha}"`);
+  const color = paraProps.bulletColor ?? runProps?.color ?? null;
+  if (color) {
+    attrs.push(`fill="${color.hex}"`);
+    if (color.alpha < 1) {
+      attrs.push(`fill-opacity="${color.alpha}"`);
     }
   } else {
     attrs.push('fill="#000000"');
@@ -1428,7 +1449,6 @@ function renderTextBodyAsPath(
         // 箇条書き記号（最初の行のみ）
         if (lineIdx === 0 && bulletText) {
           const lineFontSize = getLineFontSize(line.segments, defaultFontSize) * fontScale;
-          const firstSeg = line.segments[0];
           elements.push(
             ...renderBulletAsPath(
               bulletText,
@@ -1438,8 +1458,7 @@ function renderTextBodyAsPath(
               lineFontSize,
               fontScale,
               fontResolver,
-              firstSeg?.properties.fontFamily,
-              firstSeg?.properties.fontFamilyEa,
+              line.segments[0]?.properties,
             ),
           );
         }
@@ -1499,8 +1518,7 @@ function renderTextBodyAsPath(
             fontSize,
             fontScale,
             fontResolver,
-            firstRun?.properties.fontFamily,
-            firstRun?.properties.fontFamilyEa,
+            firstRun?.properties,
           ),
         );
       }

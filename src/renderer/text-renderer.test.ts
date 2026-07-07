@@ -47,6 +47,7 @@ function defaultParagraphProperties(
     bulletFont: null,
     bulletColor: null,
     bulletSizePct: null,
+    bulletInheritRunFont: false,
     marginLeft: 0,
     indent: 0,
     tabStops: [],
@@ -738,14 +739,9 @@ describe("latin/ea フォント切り替え", () => {
       ],
     };
     const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
-    // Latin セグメントは Calibri が先頭、EA セグメントは Meiryo が先頭のフォールバックリスト
-    // メトリクス互換 OSS フォントも含まれる
-    expect(result).toContain(
-      "font-family=\"Calibri, Carlito, Meiryo, 'Noto Sans JP', sans-serif\"",
-    );
-    expect(result).toContain(
-      "font-family=\"Meiryo, 'Noto Sans JP', Calibri, Carlito, sans-serif\"",
-    );
+    // Latin セグメントは Calibri が先頭、EA セグメントは Meiryo が先頭
+    expect(result).toContain('font-family="Calibri, Meiryo, sans-serif"');
+    expect(result).toContain('font-family="Meiryo, Calibri, sans-serif"');
     expect(result).toContain("Hello");
     expect(result).toContain("世界");
     expect(result).toContain("Test");
@@ -1428,6 +1424,60 @@ describe("renderTextBody (path mode)", () => {
     // 箇条書き記号がパスとして描画される（Noto Sans JP のモックフォントが使われる）
     expect(result).toContain("<path");
     expect(result).toContain("Noto Sans JP");
+  });
+
+  it("bulletColor が null の場合、テキストランの色で箇条書き記号がレンダリングされる", () => {
+    setupPathMode();
+    const corbelFont = createMockFont("Corbel Light");
+    const fonts = new Map([["Corbel Light", corbelFont]]);
+    setTextPathFontResolver(new DefaultTextPathFontResolver(fonts, corbelFont));
+
+    const textBody: TextBody = {
+      bodyProperties: {
+        anchor: "t",
+        marginLeft: 91440,
+        marginRight: 91440,
+        marginTop: 45720,
+        marginBottom: 45720,
+        wrap: "square",
+        autoFit: "noAutofit",
+        fontScale: 1,
+        lnSpcReduction: 0,
+        numCol: 1,
+        vert: "horz",
+      },
+      paragraphs: [
+        {
+          runs: [
+            {
+              text: "List item",
+              properties: {
+                fontSize: 18,
+                fontFamily: "Corbel Light",
+                fontFamilyEa: null,
+                bold: false,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+                color: { hex: "#163e64", alpha: 1 },
+                baseline: 0,
+              },
+            },
+          ],
+          properties: defaultParagraphProperties({
+            bullet: { type: "autoNum", scheme: "arabicPeriod", startAt: 1 },
+            bulletFont: null,
+            bulletColor: null,
+            marginLeft: 342900,
+            indent: -342900,
+          }),
+        },
+      ],
+    };
+
+    const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
+    expect(result).toContain('fill="#163e64"');
+    expect(result).toContain("<path");
   });
 
   it("フォントリゾルバーが null の場合は tspan レンダリングにフォールバック", () => {

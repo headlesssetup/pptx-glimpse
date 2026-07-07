@@ -119,6 +119,8 @@ export interface ParagraphProperties {
   bulletFont: string | null;
   bulletColor: ResolvedColor | null;
   bulletSizePct: number | null;
+  /** pPr.buFont が +mj-lt 等のテーマトークンのとき true（マスターの buFont を継承しない） */
+  bulletInheritRunFont: boolean;
   marginLeft: Emu | null;
   indent: Emu | null;
   tabStops: TabStop[];

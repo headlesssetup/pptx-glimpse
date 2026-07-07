@@ -154,6 +154,29 @@ export function parseListStyle(
   return { defaultParagraph, levels };
 }
 
+const THEME_FONT_TOKENS = new Set([
+  "+mj-lt",
+  "+mn-lt",
+  "+mj-ea",
+  "+mn-ea",
+  "+mj-cs",
+  "+mn-cs",
+]);
+
+/** buFont / latin typeface がテーマフォントトークンかどうか */
+export function isThemeFontToken(typeface: string): boolean {
+  return THEME_FONT_TOKENS.has(typeface);
+}
+
+/**
+ * buFont の typeface を段落プロパティ用に正規化する。
+ * テーマフォントトークンは「ランのフォントに従う」意味なので null にする。
+ */
+export function normalizeBulletFont(typeface: string | null): string | null {
+  if (!typeface || isThemeFontToken(typeface)) return null;
+  return typeface;
+}
+
 export function resolveThemeFont(
   typeface: string | null,
   fontScheme?: FontScheme | null,

@@ -6,7 +6,7 @@ import type {
   TxStyles,
 } from "./model/text.js";
 import type { FontScheme } from "./model/theme.js";
-import { resolveThemeFont } from "./parser/text-style-parser.js";
+import { normalizeBulletFont, resolveThemeFont } from "./parser/text-style-parser.js";
 
 export interface TextStyleContext {
   layoutPlaceholderStyles: PlaceholderStyleInfo[];
@@ -92,6 +92,7 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
       paragraph.properties.bullet !== null && paragraph.properties.bullet.type !== "none";
     if (
       hasBullet &&
+      !paragraph.properties.bulletInheritRunFont &&
       (paragraph.properties.bulletFont === null ||
         paragraph.properties.bulletColor === null ||
         paragraph.properties.bulletSizePct === null)
@@ -101,7 +102,7 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
         const levelProps = source.levels[level] ?? source.defaultParagraph;
         if (!levelProps) continue;
         if (paragraph.properties.bulletFont === null && levelProps.bulletFont) {
-          paragraph.properties.bulletFont = levelProps.bulletFont;
+          paragraph.properties.bulletFont = normalizeBulletFont(levelProps.bulletFont);
         }
         if (paragraph.properties.bulletColor === null && levelProps.bulletColor) {
           paragraph.properties.bulletColor = levelProps.bulletColor;
@@ -120,12 +121,9 @@ function resolveShapeTextInheritance(shape: ShapeElement, context: TextStyleCont
     }
 
     // マスター/レイアウト由来の buFont が "+mj-lt" 等のテーマフォントトークンの
-    // 場合があるため、継承解決後に実フォント名へ解決する
+    // 場合があるため、継承解決後にラン継承用へ正規化する
     if (paragraph.properties.bulletFont !== null) {
-      paragraph.properties.bulletFont = resolveThemeFont(
-        paragraph.properties.bulletFont,
-        context.fontScheme,
-      );
+      paragraph.properties.bulletFont = normalizeBulletFont(paragraph.properties.bulletFont);
     }
 
     // 段落 marginLeft / indent の継承解決

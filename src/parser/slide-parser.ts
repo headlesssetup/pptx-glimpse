@@ -50,6 +50,8 @@ import { parseTable } from "./table-parser.js";
 import {
   parseDefaultRunProperties,
   parseListStyle,
+  isThemeFontToken,
+  normalizeBulletFont,
   resolveThemeFont,
 } from "./text-style-parser.js";
 import { parseTiming } from "./timing-parser.js";
@@ -1484,6 +1486,14 @@ function parseParagraph(
   const lstLevelProps = lstStyle?.levels[level];
 
   const { bullet, bulletFont, bulletColor, bulletSizePct } = parseBullet(pPr, colorResolver);
+  const pPrBuFontTypeface = pPr?.buFont
+    ? ((pPr.buFont as XmlNode)["@_typeface"] as string | undefined)
+    : undefined;
+  const lstBuFontTypeface =
+    !pPr?.buFont && lstLevelProps?.bulletFont ? lstLevelProps.bulletFont : undefined;
+  const bulletInheritRunFont = [pPrBuFontTypeface, lstBuFontTypeface].some(
+    (typeface) => typeface !== undefined && isThemeFontToken(typeface),
+  );
   const lnSpc = pPr?.lnSpc as XmlNode | undefined;
   const lnSpcSpcPct = lnSpc?.spcPct as XmlNode | undefined;
   const tabStops = parseTabStops(pPr);
@@ -1494,10 +1504,11 @@ function parseParagraph(
     spaceAfter: parseSpacing(pPr?.spcAft as XmlNode | undefined),
     level,
     bullet: bullet ?? lstLevelProps?.bullet ?? null,
-    // buFont は "+mj-lt" 等のテーマフォントトークンを取り得るため実フォント名に解決する
-    bulletFont: resolveThemeFont(bulletFont ?? lstLevelProps?.bulletFont ?? null, fontScheme),
+  // buFont の "+mj-lt" 等はランのフォント継承を意味するため実フォント名には解決しない
+    bulletFont: normalizeBulletFont(bulletFont ?? lstLevelProps?.bulletFont ?? null),
     bulletColor: bulletColor ?? lstLevelProps?.bulletColor ?? null,
     bulletSizePct: bulletSizePct ?? lstLevelProps?.bulletSizePct ?? null,
+    bulletInheritRunFont,
     marginLeft:
       pPr?.["@_marL"] !== undefined
         ? asEmu(Number(pPr["@_marL"]))
