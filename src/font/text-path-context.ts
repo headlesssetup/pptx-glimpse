@@ -117,6 +117,14 @@ export function fontStyleVariants(bold: boolean, italic: boolean): [boolean, boo
   return out;
 }
 
+/** "Corbel Light" → "Corbel" など、ウェイト付きファミリ名のベース名 */
+export function familyNameAliases(name: string): string[] {
+  const stripped = name
+    .replace(/\s+(Extra\s+Light|Semi\s*Bold|Ultra\s+Light|Light|Thin|Medium|Heavy|Black)\s*$/i, "")
+    .trim();
+  return stripped !== name ? [stripped] : [];
+}
+
 /**
  * フォントがテキスト内の全文字 (空白類を除く) のグリフを持つか判定する。
  * charToGlyphIndex を持たないフォントは判定不能のため true を返す (従来動作)。
@@ -193,9 +201,12 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
     }
   }
 
+  private styleFallbackWarned = new Set<string>();
+
   resetWarningDedup(): void {
     this.warnedFonts.clear();
     this.warnedGlyphs.clear();
+    this.styleFallbackWarned.clear();
   }
 
   resolveFont(
@@ -261,30 +272,55 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
   }
 
   private findFontCandidates(name: string, bold: boolean, italic: boolean): OpentypeFullFont[] {
-    const out: OpentypeFullFont[] = [];
+    const variants = fontStyleVariants(bold, italic);
+    const regularIdx = variants.findIndex(([b, i]) => !b && !i);
+    const strictVariants = regularIdx === -1 ? variants : variants.slice(0, regularIdx);
+    const relaxedVariants = regularIdx === -1 ? [] : variants.slice(regularIdx);
 
-    // 要求スタイルに最も近いフェイスを優先順に収集する
-    for (const [b, i] of fontStyleVariants(bold, italic)) {
-      const direct = this.fonts.get(fontStyleKey(name, b, i));
-      if (direct && !out.includes(direct)) out.push(direct);
-    }
+    const collect = (variantList: [boolean, boolean][]): OpentypeFullFont[] => {
+      const out: OpentypeFullFont[] = [];
+      const tryName = (searchName: string): void => {
+        for (const [b, i] of variantList) {
+          const font = this.fonts.get(fontStyleKey(searchName, b, i));
+          if (font && !out.includes(font)) out.push(font);
+        }
+      };
 
-    // フォントマッピングで OSS 代替名を試行
-    const mapped = getCurrentMappedFont(name);
-    if (mapped) {
-      for (const [b, i] of fontStyleVariants(bold, italic)) {
-        const mappedFont = this.fonts.get(fontStyleKey(mapped, b, i));
-        if (mappedFont && !out.includes(mappedFont)) out.push(mappedFont);
+      const searchNames = [name, ...familyNameAliases(name)];
+      const mapped = getCurrentMappedFont(name);
+      if (mapped) {
+        searchNames.push(mapped, ...familyNameAliases(mapped));
+      }
+      for (const searchName of searchNames) {
+        tryName(searchName);
       }
 
-      // CJK フォールバックチェーン
-      for (const fallback of getCjkFallbackFonts(mapped)) {
-        const fallbackFont = this.fonts.get(fallback);
-        if (fallbackFont && !out.includes(fallbackFont)) out.push(fallbackFont);
+      if (mapped) {
+        for (const fallback of getCjkFallbackFonts(mapped)) {
+          const fallbackFont = this.fonts.get(fallback);
+          if (fallbackFont && !out.includes(fallbackFont)) out.push(fallbackFont);
+        }
+      }
+
+      return out;
+    };
+
+    const strict = collect(strictVariants);
+    if (strict.length > 0) return strict;
+
+    const relaxed = collect(relaxedVariants);
+    if (relaxed.length > 0 && (bold || italic)) {
+      const warnKey = `${name}|${bold ? "b" : ""}${italic ? "i" : ""}`;
+      if (!this.styleFallbackWarned.has(warnKey)) {
+        this.styleFallbackWarned.add(warnKey);
+        const style = `${bold ? "bold" : ""}${bold && italic ? " " : ""}${italic ? "italic" : ""}`;
+        warn(
+          "font.styleFallback",
+          `No ${style} face for "${name}"; using regular`,
+        );
       }
     }
-
-    return out;
+    return relaxed;
   }
 
   /**

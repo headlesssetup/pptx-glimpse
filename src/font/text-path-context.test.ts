@@ -7,6 +7,7 @@ import {
   DefaultTextPathFontResolver,
   fontStyleKey,
   fontStyleVariants,
+  familyNameAliases,
   getTextPathFontResolver,
   orderFallbackPool,
   resetTextPathFontResolver,
@@ -105,6 +106,12 @@ describe("fontStyleKey / fontStyleVariants", () => {
       [false, false],
     ]);
     expect(fontStyleVariants(false, false)).toEqual([[false, false]]);
+  });
+
+  it("familyNameAliases はウェイト付き名からベース名を返す", () => {
+    expect(familyNameAliases("Corbel Light")).toEqual(["Corbel"]);
+    expect(familyNameAliases("Aptos SemiBold")).toEqual(["Aptos"]);
+    expect(familyNameAliases("Arial")).toEqual([]);
   });
 });
 
@@ -453,6 +460,29 @@ describe("実フォント優先", () => {
     setFontMapping({ Aptos: "Carlito" });
     const resolver = new DefaultTextPathFontResolver(fonts);
     expect(resolver.resolveFont("Aptos", null, null, { bold: true })).toBe(aptosBold);
+  });
+
+  it("埋め込み Regular よりマッピング先の Bold を優先する", () => {
+    const corbelLight = createMockFont("Corbel-Light-Embedded");
+    const carlitoBold = createMockFont("Carlito-Bold");
+    const fonts = new Map([
+      ["Corbel Light", corbelLight],
+      [fontStyleKey("Carlito", true, false), carlitoBold],
+    ]);
+    setFontMapping({ "Corbel Light": "Carlito" });
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(carlitoBold);
+  });
+
+  it("Corbel Light + bold ではベースファミリ Corbel の Bold を使う", () => {
+    const corbelLight = createMockFont("Corbel-Light-Embedded");
+    const corbelBold = createMockFont("Corbel-Bold");
+    const fonts = new Map([
+      ["Corbel Light", corbelLight],
+      [fontStyleKey("Corbel", true, false), corbelBold],
+    ]);
+    const resolver = new DefaultTextPathFontResolver(fonts);
+    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(corbelBold);
   });
 });
 
