@@ -1,389 +1,45 @@
 # pptx-glimpse
 
-[![npm](https://img.shields.io/npm/v/pptx-glimpse)](https://www.npmjs.com/package/pptx-glimpse)
-[![CI](https://github.com/hirokisakabe/pptx-glimpse/actions/workflows/ci.yml/badge.svg)](https://github.com/hirokisakabe/pptx-glimpse/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
+Local tool for converting PowerPoint (.pptx) files to SVG/PNG with high fidelity and click-build animation support.
 
-No LibreOffice required — just `npm install`.
-
-A lightweight JavaScript library that renders PowerPoint (.pptx) slides as SVG or PNG in Node.js.
-
-**[Try the Demo](https://glimpse.pptx.app/)** | [npm](https://www.npmjs.com/package/pptx-glimpse)
-
-![pptx-glimpse demo](https://raw.githubusercontent.com/hirokisakabe/pptx-glimpse/main/docs/demo.gif)
-
-_Upload a .pptx file → get SVG/PNG output instantly_
-
-|                                                   PowerPoint                                                   |                                                    pptx-glimpse                                                    |
-| :------------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------------: |
-| ![PowerPoint](https://raw.githubusercontent.com/hirokisakabe/pptx-glimpse/main/docs/comparison-powerpoint.png) | ![pptx-glimpse](https://raw.githubusercontent.com/hirokisakabe/pptx-glimpse/main/docs/comparison-pptx-glimpse.png) |
-
-## Motivation
-
-pptx-glimpse is designed for two primary use cases:
-
-- **Frontend PPTX preview** — Render slide thumbnails without depending on
-  Microsoft Office or LibreOffice. The SVG output can be embedded directly
-  in web pages.
-- **AI image recognition** — Convert slides to PNG so that vision-capable LLMs
-  can understand slide content and layout.
-
-The library focuses on accurately reproducing text, shapes, and spatial layout
-rather than pixel-perfect rendering of every PowerPoint feature.
-
-## Why not LibreOffice?
-
-|              | LibreOffice                | pptx-glimpse                   |
-| ------------ | -------------------------- | ------------------------------ |
-| Install size | ~500 MB+                   | `npm install` (~30 MB)         |
-| Docker image | Large base image required  | Works in any Node.js image     |
-| Startup time | Process spawning overhead  | In-process, no spawning        |
-| Concurrency  | One process per conversion | Async, runs in your event loop |
-
-## Requirements
-
-- **Node.js >= 22**
-
-## Installation
+## Commands
 
 ```bash
-npm install pptx-glimpse
+pnpm install
+pnpm dev -- samples/petrika.pptx          # live preview (auto-reload on src/ changes)
+pnpm render -- deck.pptx                  # export SVG + PNG to ./output
+pnpm render -- deck.pptx --steps          # export each animation build step
+pnpm render:samples                       # batch-render all decks in samples/
+pnpm baseline:update                      # save reference PNGs to samples/baselines/
+pnpm render:check                         # pixel-diff renders vs baselines
+pnpm inspect -- deck.pptx slide1          # dump internal OOXML
+pnpm test                                 # unit tests
 ```
 
-## Usage
+## samples/
 
-```typescript
-import { readFileSync, writeFileSync } from "fs";
-import { convertPptxToSvg, convertPptxToPng } from "pptx-glimpse";
+Personal stress-test suite (`samples/README.md`). Decks are gitignored; add `.pptx` files locally.
 
-const pptx = readFileSync("presentation.pptx");
+## Animation steps
 
-// Convert to SVG
-const svgResults = await convertPptxToSvg(pptx);
-// [{ slideNumber: 1, svg: "<svg>...</svg>" }, ...]
-
-// Convert to PNG
-const pngResults = await convertPptxToPng(pptx);
-// [{ slideNumber: 1, png: Buffer, width: 960, height: 540 }, ...]
-
-writeFileSync("slide1.png", pngResults[0].png);
+```bash
+pnpm render -- samples/animated.pptx --steps --width 1920
 ```
 
-### Options
-
-Both `convertPptxToSvg` and `convertPptxToPng` accept an optional `ConvertOptions` object.
-
-```typescript
-const results = await convertPptxToPng(pptx, {
-  slides: [1, 3], // Convert only slides 1 and 3
-  width: 1920, // Output width in pixels (default: 960)
-  height: 1080, // Output height in pixels (width takes priority if both set)
-  logLevel: "warn", // Warning log level: "off" | "warn" | "debug"
-  fontDirs: ["/custom/fonts"], // Additional font directories to search
-  skipSystemFonts: true, // Skip OS system font directories; use fontDirs only
-  fontMapping: {
-    "Custom Corp Font": "Noto Sans", // Custom font name mapping
-  },
-  animationSteps: true, // Emit one frame per click-build step (see below)
-});
-```
-
-### Animation Build Steps
-
-By default each slide is rendered once, in its final state with every object
-visible. Set `animationSteps: true` to instead render each step of a slide's
-click-triggered **entrance** / **exit** animations (objects that appear or
-disappear on click) as separate frames.
-
-```typescript
-const frames = await convertPptxToPng(pptx, { animationSteps: true });
-// frames is one entry per build step, with a stepIndex:
-//   { slideNumber: 1, stepIndex: 0, ... }  ← initial state (before any click)
-//   { slideNumber: 1, stepIndex: 1, ... }  ← after the 1st click
-//   { slideNumber: 1, stepIndex: 2, ... }  ← after the 2nd click
-```
-
-Each frame is a full render of the slide at that point in the build sequence
-(cumulative: later frames include everything revealed by earlier clicks). Slides
-without click animations produce a single frame (`stepIndex: 0`). When
-`animationSteps` is omitted the output is unchanged — one entry per slide with no
-`stepIndex`.
-
-Scope: only click-triggered entrance/exit effects are modeled. Emphasis, motion
-paths, timing/durations, and paragraph-by-paragraph text builds are not
-reflected (a text shape with a build is revealed in full at its first click).
-
-### Advanced Usage
-
-<details>
-<summary>Font Utilities</summary>
-
-#### Collecting used fonts
-
-`collectUsedFonts` parses a PPTX file and returns all font names used across slides — without performing a full render. Useful for pre-checking which fonts need to be installed.
-
-```typescript
-import { collectUsedFonts } from "pptx-glimpse";
-
-const fonts = collectUsedFonts(pptx);
-// {
-//   theme: { majorFont: "Calibri Light", minorFont: "Calibri", majorFontEa: "...", ... },
-//   fonts: ["Arial", "Calibri", "Meiryo"]
-// }
-```
-
-#### Font mapping helpers
-
-```typescript
-import { DEFAULT_FONT_MAPPING, createFontMapping, getMappedFont } from "pptx-glimpse";
-
-// Create a custom mapping (merges with defaults, user values take priority)
-const mapping = createFontMapping({ Calibri: "Ubuntu" });
-
-// Look up mapped font (case-insensitive)
-getMappedFont("Meiryo", mapping); // "Noto Sans JP"
-getMappedFont("calibri", mapping); // "Ubuntu"
-```
-
-</details>
-
-<details>
-<summary>Custom Font Loading</summary>
-
-In environments where system fonts are not available, you can build a text measurer from font buffers using `createOpentypeSetupFromBuffers`. This is a low-level utility for advanced use cases.
-
-```typescript
-import { readFileSync } from "fs";
-import { createOpentypeSetupFromBuffers } from "pptx-glimpse";
-
-const setup = await createOpentypeSetupFromBuffers([
-  { name: "Carlito", data: readFileSync("fonts/Carlito-Regular.ttf") },
-  { name: "Noto Sans JP", data: readFileSync("fonts/NotoSansJP-Regular.ttf") },
-]);
-// setup.measurer — text width measurement
-// setup.fontResolver — text-to-SVG-path conversion
-```
-
-</details>
+Outputs `slide-01-step-00.png`, `slide-01-step-01.png`, etc.
 
 ## Fonts
 
-### Automatic Font Loading
+Embedded fonts in the PPTX are used automatically. For substitution, pass `fontDirs` and `fontMapping` via the API in `src/converter.ts`.
 
-pptx-glimpse automatically scans system font directories and loads fonts using [opentype.js](https://opentype.js.org/). Text in SVG output is converted to `<path>` elements, ensuring consistent rendering regardless of the environment.
-
-Default system font directories:
-
-| OS      | Directories                                                  |
-| ------- | ------------------------------------------------------------ |
-| Linux   | `/usr/share/fonts`, `/usr/local/share/fonts`                 |
-| macOS   | `/System/Library/Fonts`, `/Library/Fonts`, `~/Library/Fonts` |
-| Windows | `C:\Windows\Fonts`                                           |
-
-Use the `fontDirs` option to add custom font directories. To skip system font scanning entirely and use only `fontDirs` (useful in containers, serverless environments, or when you want to bundle specific fonts to reduce startup time), set `skipSystemFonts: true`.
-
-### Embedded Fonts
-
-If a deck was saved with **"Embed fonts in the file"**, pptx-glimpse uses the embedded font files (`ppt/fonts/*.fntdata`) directly — no system install or mapping needed, and the output matches the original deck's fonts. Embedded fonts take precedence over system fonts of the same name. This is on by default; set `useEmbeddedFonts: false` to ignore them and use only system fonts + mapping.
+## Library API
 
 ```typescript
-const results = await convertPptxToPng(pptx, { useEmbeddedFonts: true }); // default
-```
+import { convertPptxToPng } from "./src/converter.js";
 
-PowerPoint wraps embedded fonts in the EOT container and compresses them with **MicroType Express** (the default); pptx-glimpse decodes both, including subsetted ("embed only characters in use") fonts. Notes: only works if the deck actually embeds fonts (many don't — then it falls back to system fonts/mapping). Currently applies to the main text (SVG path) rendering.
-
-### Using the Genuine Fonts
-
-Font mapping and glyph fallback are last resorts. Whenever the deck's actual font is available, pptx-glimpse uses it directly by name — including the correct bold/italic face — and neither mapping nor fallback applies. Microsoft's built-in PowerPoint fonts (Aptos, Calibri, Corbel, …) are proprietary and cannot be bundled with this library, but there are two supported ways to render with the real thing:
-
-1. **Embed the fonts in the deck** — in PowerPoint: File → Options → Save → "Embed fonts in the file". The fonts travel inside the .pptx and pptx-glimpse uses them automatically with no server setup (EOT and MicroType Express compression are decoded transparently).
-2. **Provide the fonts on the render host** — install them system-wide or pass their directory via `fontDirs`. Microsoft distributes the Aptos family as a free download, and fonts from a licensed Windows/Office installation may be usable subject to their license terms.
-
-```typescript
-const results = await convertPptxToPng(pptx, {
-  fontDirs: ["/srv/fonts/microsoft"],
+const frames = await convertPptxToPng(pptxBuffer, {
+  animationSteps: true,
+  width: 1920,
+  logLevel: "warn",
 });
 ```
-
-The bundled demo app additionally honors the `PPTX_GLIMPSE_FONT_DIRS` environment variable (path-delimiter separated) and a `fonts/` directory in the demo app root.
-
-### Glyph Fallback
-
-If the resolved font is missing glyphs for some characters (e.g., Latvian ļ/ē/ā in a font that only covers Western European Latin), pptx-glimpse automatically falls back — per text run — to another available font that covers those characters instead of rendering .notdef boxes. Fallback is deterministic: embedded fonts are tried first, then well-known families (Carlito, Arimo, Liberation Sans, Noto Sans, DejaVu Sans, …) before other scanned fonts, and all runs stay within one family with the matching bold/italic face where possible. The same preferred order supplies the substitute when a deck's font is neither installed nor mapped, so bold/italic styling is kept even for unknown fonts. A `font.missingGlyphs` warning is logged (visible with `logLevel: "warn"`).
-
-### Font Mapping
-
-PPTX files often reference proprietary fonts (e.g., Calibri, Meiryo). pptx-glimpse maps these to open-source alternatives available on Google Fonts.
-
-Default mapping:
-
-| PPTX Font                           | Mapped to     |
-| ----------------------------------- | ------------- |
-| Calibri                             | Carlito       |
-| Aptos (Office 2024+ default)        | Carlito       |
-| Corbel                              | Carlito       |
-| Arial                               | Arimo         |
-| Times New Roman                     | Tinos         |
-| Courier New                         | Cousine       |
-| Cambria                             | Caladea       |
-| Meiryo / Yu Gothic / MS Gothic etc. | Noto Sans JP  |
-| MS Mincho / Yu Mincho etc.          | Noto Serif JP |
-
-You can customize the mapping via the `fontMapping` option:
-
-```typescript
-const results = await convertPptxToSvg(pptx, {
-  fontMapping: {
-    "Custom Corp Font": "Noto Sans", // Add a new mapping
-    Arial: "Inter", // Override the default
-  },
-});
-```
-
-## Feature Support
-
-136 preset shapes, charts, tables, SmartArt, gradients, shadows, and more — covering the most common static PowerPoint content.
-
-### Supported Features
-
-#### Shapes
-
-| Feature       | Details                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Preset shapes | 136 types (rectangles, ellipses, arrows, flowcharts, callouts, stars, math symbols, etc.)                                      |
-| Custom shapes | Arbitrary shape drawing using custom paths (moveTo, lnTo, cubicBezTo, quadBezTo, arcTo, close), adjust values / guide formulas |
-| Connectors    | Straight / bent / curved connectors, arrow endpoints (headEnd/tailEnd), line style / color / width                             |
-| Groups        | Shape grouping, nested groups, group rotation / flip                                                                           |
-| Transforms    | Position, size, rotation, flip (flipH/flipV), adjustment values                                                                |
-
-#### Text
-
-| Feature              | Details                                                                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Character formatting | Font size, font family (East Asian font support), bold, italic, underline, strikethrough, font color, superscript / subscript, hyperlinks   |
-| Paragraph formatting | Horizontal alignment (left/center/right/justify), vertical anchor (top/center/bottom), line spacing, before/after paragraph spacing, indent |
-| Bullet points        | Character bullets (buChar), auto-numbering (buAutoNum, 9 types), bullet font / color / size                                                 |
-| Text boxes           | Word wrap (square/none), auto-fit (noAutofit/normAutofit/spAutofit), font scaling, margins                                                  |
-| Word wrapping        | Word wrapping for English, Japanese, and CJK text, wrapping with mixed font sizes                                                           |
-| Style inheritance    | Full text style inheritance chain (run → paragraph default → body lstStyle → layout → master → txStyles → defaultTextStyle → theme fonts)   |
-| Tab stops / fields   | Tab stop positions, field codes (slide number, date, etc.)                                                                                  |
-
-#### Fill
-
-| Feature      | Details                                                          |
-| ------------ | ---------------------------------------------------------------- |
-| Solid color  | RGB color specification, transparency                            |
-| Gradient     | Linear gradient, radial gradient, multiple gradient stops, angle |
-| Image fill   | PNG/JPEG/GIF, stretch mode, cropping (srcRect)                   |
-| Pattern fill | Hatching patterns (horizontal, vertical, diagonal, cross, etc.)  |
-| Group fill   | Inherit fill from parent group                                   |
-| No fill      | noFill specification                                             |
-
-#### Lines & Borders
-
-| Feature    | Details                                                           |
-| ---------- | ----------------------------------------------------------------- |
-| Line style | Line width, solid color, transparency, lineCap, lineJoin          |
-| Dash style | solid, dash, dot, dashDot, lgDash, lgDashDot, sysDash, sysDot     |
-| Arrows     | Head / tail arrow endpoints with type, width, and length settings |
-
-#### Colors
-
-| Feature          | Details                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| Color types      | RGB (srgbClr), theme color (schemeClr), system color (sysClr)            |
-| Theme colors     | Color scheme (dk1, lt1, dk2, lt2, accent1-6, hlink, folHlink), color map |
-| Color transforms | Luminance adjustment (lumMod/lumOff), tint, shade, transparency (alpha)  |
-
-#### Effects
-
-| Feature      | Details                                                |
-| ------------ | ------------------------------------------------------ |
-| Outer shadow | Blur radius, distance, direction, color / transparency |
-| Inner shadow | Blur radius, distance, direction, color / transparency |
-| Glow         | Radius, color / transparency                           |
-| Soft edge    | Radius                                                 |
-
-#### Images
-
-| Feature        | Details                                                                      |
-| -------------- | ---------------------------------------------------------------------------- |
-| Image elements | PNG/JPEG/GIF, position / size / rotation / flip, cropping (srcRect), effects |
-| Image fill     | Image fill for shapes and backgrounds                                        |
-
-#### Tables
-
-| Feature         | Details                                                                         |
-| --------------- | ------------------------------------------------------------------------------- |
-| Table structure | Row and column grid, cell merging (gridSpan/rowSpan), row height / column width |
-| Cell formatting | Text, fill (solid/gradient/image), borders (top/bottom/left/right, styles)      |
-
-#### Charts
-
-| Feature          | Details                                                                                                   |
-| ---------------- | --------------------------------------------------------------------------------------------------------- |
-| Supported charts | Bar chart (vertical/horizontal), line chart, pie chart, scatter plot, area chart, doughnut, bubble, radar |
-| Chart elements   | Title, legend (position), series (name/values/categories/color), category axis, value axis                |
-
-#### SmartArt
-
-| Feature             | Details                                                                        |
-| ------------------- | ------------------------------------------------------------------------------ |
-| Pre-rendered shapes | Renders SmartArt using PowerPoint's pre-rendered drawing shapes (drawingN.xml) |
-| mc:AlternateContent | Handles AlternateContent fallback mechanism used by SmartArt                   |
-
-#### Background & Slide Settings
-
-| Feature      | Details                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| Background   | Solid, gradient, image. Fallback order: slide → layout → master        |
-| Slide size   | 16:9, 4:3, custom sizes                                                |
-| Theme        | Theme color scheme, theme fonts (majorFont/minorFont), theme font refs |
-| showMasterSp | Control visibility of master shapes per slide / layout                 |
-| Animations   | Click-triggered entrance / exit builds rendered as per-step frames via `animationSteps` |
-
-<details>
-<summary>Unsupported Features</summary>
-
-| Category       | Unsupported features                                                       |
-| -------------- | -------------------------------------------------------------------------- |
-| Fill           | Path gradient (rect/shape type)                                            |
-| Effects        | Reflection, 3D rotation / extrusion, artistic effects                      |
-| Charts         | Stock, combo, histogram, box plot, waterfall, treemap, sunburst            |
-| Chart details  | Data labels, axis titles / tick marks / grid lines, error bars, trendlines |
-| Text           | Individual text effects (shadow/glow), text columns                        |
-| Tables         | Table style template application, diagonal borders                         |
-| Shapes         | Shape operations (Union/Subtract/Intersect/Fragment)                       |
-| Multimedia     | Embedded video / audio                                                     |
-| Animations     | Emphasis / motion-path / timing-based animations, slide transitions (click entrance/exit builds are supported via `animationSteps`) |
-| Slide elements | Slide notes, comments, headers / footers, slide numbers / dates            |
-| Image formats  | EMF/WMF (parsed but not rendered)                                          |
-| Other          | Macros / VBA, sections, zoom slides                                        |
-
-</details>
-
-## Development
-
-<details>
-<summary>Test rendering</summary>
-
-You can specify a PPTX file to preview SVG and PNG conversion results.
-
-```bash
-npm run render -- <pptx-file> [output-dir]
-```
-
-- If `output-dir` is omitted, output is saved to `./output`
-
-```bash
-# Examples
-npm run render -- presentation.pptx
-npm run render -- presentation.pptx ./my-output
-```
-
-</details>
-
-## License
-
-MIT

@@ -1,7 +1,7 @@
 {
   "name": "pptx-glimpse",
   "version": "1.0.1",
-  "description": "A lightweight JavaScript library for rendering PowerPoint (.pptx) files as SVG or PNG in Node.js. No LibreOffice required.",
+  "description": "Local PPTX to SVG/PNG converter with animation step support",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -15,11 +15,10 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "bench": "vitest bench",
-    "lint": "eslint src/ vrt/ scripts/ bench/ e2e/",
-    "lint:fix": "eslint src/ vrt/ scripts/ bench/ e2e/ --fix",
-    "format": "prettier --write 'src/**/*.ts' 'vrt/**/*.ts' 'scripts/**/*.ts' 'bench/**/*.ts' 'e2e/**/*.ts'",
-    "format:check": "prettier --check 'src/**/*.ts' 'vrt/**/*.ts' 'scripts/**/*.ts' 'bench/**/*.ts' 'e2e/**/*.ts'",
+    "lint": "eslint src/ scripts/",
+    "lint:fix": "eslint src/ scripts/ --fix",
+    "format": "prettier --write 'src/**/*.ts' 'scripts/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'scripts/**/*.ts'",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -27,41 +26,15 @@
     "knip": "knip",
     "dev": "tsx scripts/dev-server.ts",
     "render": "tsx scripts/test-render.ts",
-    "inspect": "tsx scripts/inspect-pptx.ts",
-    "vrt:snapshot:docker-build": "docker build -t pptx-glimpse-snapshot-vrt docker/snapshot-vrt",
-    "vrt:snapshot:fixtures": "tsx vrt/snapshot/create-fixtures.ts",
-    "vrt:snapshot:update": "docker run --rm -v \"$(pwd)\":/workspace -v pptx-glimpse-snapshot-vrt-nm:/workspace/node_modules pptx-glimpse-snapshot-vrt bash /workspace/vrt/snapshot/docker-run.sh bash -c \"npx tsx vrt/snapshot/create-fixtures.ts && npx tsx vrt/snapshot/update-snapshots.ts\"",
-    "vrt:lo:docker-build": "docker build -t pptx-glimpse-vrt docker/libreoffice-vrt",
-    "vrt:lo:fixtures": "docker run --rm -v \"$(pwd)\":/workspace pptx-glimpse-vrt python3 /workspace/vrt/libreoffice/create_fixtures.py",
-    "vrt:lo:update": "pnpm run vrt:lo:docker-build && pnpm run vrt:lo:fixtures && docker run --rm -v \"$(pwd)\":/workspace pptx-glimpse-vrt bash /workspace/vrt/libreoffice/update_snapshots.sh",
-    "test:package": "pnpm run build && bash scripts/test-package.sh",
-    "changeset": "changeset",
-    "demo:dev": "cd demo && npm run dev",
-    "demo:build": "pnpm run build && cd demo && npm install && npm run build"
+    "render:samples": "tsx scripts/render-samples.ts",
+    "render:check": "tsx scripts/check-samples.ts check",
+    "baseline:update": "tsx scripts/check-samples.ts update",
+    "inspect": "tsx scripts/inspect-pptx.ts"
   },
-  "files": [
-    "dist"
-  ],
   "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=22"
   },
-  "keywords": [
-    "pptx",
-    "powerpoint",
-    "svg",
-    "png",
-    "converter"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hirokisakabe/pptx-glimpse.git"
-  },
-  "homepage": "https://github.com/hirokisakabe/pptx-glimpse",
-  "bugs": {
-    "url": "https://github.com/hirokisakabe/pptx-glimpse/issues"
-  },
-  "author": "hirokisakabe",
   "license": "MIT",
   "dependencies": {
     "@resvg/resvg-wasm": "^2.6.2",
@@ -70,7 +43,6 @@
     "opentype.js": "1.3.4"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.8",
     "@types/node": "^25.2.2",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "4.1.0",

@@ -48,11 +48,11 @@ import {
 import { resolveShapeStyle } from "./style-reference-resolver.js";
 import { parseTable } from "./table-parser.js";
 import {
+  isThemeFontToken,
+  normalizeBulletFont,
   parseDefaultRunProperties,
   parseListStyle,
   parseSpacingValue,
-  isThemeFontToken,
-  normalizeBulletFont,
   resolveThemeFont,
 } from "./text-style-parser.js";
 import { parseTiming } from "./timing-parser.js";
@@ -1492,16 +1492,14 @@ function parseParagraph(
   const tabStops = parseTabStops(pPr);
   const properties = {
     alignment: (pPr?.["@_algn"] as "l" | "ctr" | "r" | "just") ?? lstLevelProps?.alignment ?? null,
-    lineSpacing: lnSpcSpcPct
-      ? Number(lnSpcSpcPct["@_val"])
-      : (lstLevelProps?.lineSpacing ?? null),
+    lineSpacing: lnSpcSpcPct ? Number(lnSpcSpcPct["@_val"]) : (lstLevelProps?.lineSpacing ?? null),
     spaceBefore:
       parseSpacing(pPr?.spcBef as XmlNode | undefined) ?? lstLevelProps?.spaceBefore ?? null,
     spaceAfter:
       parseSpacing(pPr?.spcAft as XmlNode | undefined) ?? lstLevelProps?.spaceAfter ?? null,
     level,
     bullet: bullet ?? lstLevelProps?.bullet ?? null,
-  // buFont の "+mj-lt" 等はランのフォント継承を意味するため実フォント名には解決しない
+    // buFont の "+mj-lt" 等はランのフォント継承を意味するため実フォント名には解決しない
     bulletFont: normalizeBulletFont(bulletFont ?? lstLevelProps?.bulletFont ?? null),
     bulletColor: bulletColor ?? lstLevelProps?.bulletColor ?? null,
     bulletSizePct: bulletSizePct ?? lstLevelProps?.bulletSizePct ?? null,

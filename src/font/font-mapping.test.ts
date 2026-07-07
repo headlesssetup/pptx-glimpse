@@ -4,8 +4,8 @@ import {
   buildFontMappingSuggestion,
   createFontMapping,
   DEFAULT_FONT_MAPPING,
-  formatFontNotFoundMessage,
   type FontMapping,
+  formatFontNotFoundMessage,
   getMappedFont,
 } from "./font-mapping.js";
 

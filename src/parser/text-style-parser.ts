@@ -182,14 +182,7 @@ export function parseListStyle(
   return { defaultParagraph, levels };
 }
 
-const THEME_FONT_TOKENS = new Set([
-  "+mj-lt",
-  "+mn-lt",
-  "+mj-ea",
-  "+mn-ea",
-  "+mj-cs",
-  "+mn-cs",
-]);
+const THEME_FONT_TOKENS = new Set(["+mj-lt", "+mn-lt", "+mj-ea", "+mn-ea", "+mj-cs", "+mn-cs"]);
 
 /** buFont / latin typeface がテーマフォントトークンかどうか */
 export function isThemeFontToken(typeface: string): boolean {

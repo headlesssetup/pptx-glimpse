@@ -19,12 +19,8 @@ import type {
   TextVerticalType,
 } from "../model/text.js";
 import { EMU_PER_INCH } from "../utils/constants.js";
+import { EMOJI_FONT_FAMILY, measureEmojiWidth, splitByEmoji } from "../utils/emoji.js";
 import { emuToPixels } from "../utils/emu.js";
-import {
-  EMOJI_FONT_FAMILY,
-  measureEmojiWidth,
-  splitByEmoji,
-} from "../utils/emoji.js";
 import { wrapParagraph } from "../utils/text-wrap.js";
 import type { Emu } from "../utils/unit-types.js";
 import { asEmu } from "../utils/unit-types.js";
@@ -440,9 +436,7 @@ function buildBulletStyleAttrs(
   const styles: string[] = [];
 
   const fontSize =
-    props.bulletSizePct !== null
-      ? textFontSizePt * (props.bulletSizePct / 100000)
-      : textFontSizePt;
+    props.bulletSizePct !== null ? textFontSizePt * (props.bulletSizePct / 100000) : textFontSizePt;
   styles.push(`font-size="${fontSize}pt"`);
 
   const bulletFont = props.bulletFont ?? runProps?.fontFamily ?? null;
@@ -1148,13 +1142,7 @@ function renderSegmentAsPath(
         parts.push(rendered.svg);
         if (props.underline || props.strikethrough) {
           parts.push(
-            ...renderTextDecorations(
-              x + totalWidth,
-              effectiveY,
-              rendered.width,
-              fontSizePx,
-              props,
-            ),
+            ...renderTextDecorations(x + totalWidth, effectiveY, rendered.width, fontSizePx, props),
           );
         }
         totalWidth += rendered.width;
@@ -1313,13 +1301,7 @@ function renderBulletAsPath(
 
   // bulletFont が指定されている場合はそれを使用し、未指定の場合はテキストランのフォントにフォールバック
   const font = paraProps.bulletFont
-    ? fontResolver.resolveFont(
-        paraProps.bulletFont,
-        null,
-        undefined,
-        fontStyle,
-        bulletText,
-      )
+    ? fontResolver.resolveFont(paraProps.bulletFont, null, undefined, fontStyle, bulletText)
     : fontResolver.resolveFont(
         runProps?.fontFamily ?? null,
         runProps?.fontFamilyEa ?? null,

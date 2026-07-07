@@ -1,22 +1,21 @@
 import { readFileSync } from "fs";
 
-import { convertPptxToSvg, collectUsedFonts } from "../src/index.js";
+import { unwrapEmbeddedFontData } from "../src/font/eot.js";
 import {
   buildFontMappingSuggestion,
   createFontMapping,
-  getMappedFont,
   type FontMapping,
+  getMappedFont,
 } from "../src/font/font-mapping.js";
-import { unwrapEmbeddedFontData } from "../src/font/eot.js";
-import { parseRelationships, resolveRelationshipTarget } from "../src/parser/relationship-parser.js";
-import type { PptxArchive } from "../src/parser/pptx-reader.js";
+import { collectUsedFonts, convertPptxToSvg } from "../src/index.js";
 import type { EmbeddedFont } from "../src/model/presentation.js";
-import { parsePptxData } from "../src/pptx-data-parser.js";
+import type { PptxArchive } from "../src/parser/pptx-reader.js";
 import {
-  getWarningEntries,
-  getWarningSummary,
-  type WarningEntry,
-} from "../src/warning-logger.js";
+  parseRelationships,
+  resolveRelationshipTarget,
+} from "../src/parser/relationship-parser.js";
+import { parsePptxData } from "../src/pptx-data-parser.js";
+import { getWarningEntries, getWarningSummary, type WarningEntry } from "../src/warning-logger.js";
 
 const DEFAULT_RENDER_WIDTH = 1920;
 const FONT_NOT_FOUND_RE = /Font not found: "([^"]+)"/;

@@ -73,9 +73,7 @@ function generateDiagnosticsHtml(info: DevRenderInfo): string {
     info.usedFonts.theme.minorFontEa && `Minor EA: ${info.usedFonts.theme.minorFontEa}`,
   ].filter(Boolean);
 
-  const fontList = info.usedFonts.fonts
-    .map((font) => `<li>${escapeHtml(font)}</li>`)
-    .join("");
+  const fontList = info.usedFonts.fonts.map((font) => `<li>${escapeHtml(font)}</li>`).join("");
 
   const missingList = info.missingFonts
     .map((font) => `<li><code>${escapeHtml(font)}</code></li>`)
@@ -125,7 +123,9 @@ function generateDiagnosticsHtml(info: DevRenderInfo): string {
           : "other";
       const items = entries
         .map((entry) => {
-          const ctx = entry.context ? ` <span class="ctx">(${escapeHtml(entry.context)})</span>` : "";
+          const ctx = entry.context
+            ? ` <span class="ctx">(${escapeHtml(entry.context)})</span>`
+            : "";
           return `<li>${escapeHtml(entry.message)}${ctx}</li>`;
         })
         .join("");
@@ -154,7 +154,9 @@ function generateDiagnosticsHtml(info: DevRenderInfo): string {
     `</section>` +
     `<section class="diag-section">` +
     `<h2>Fonts in deck</h2>` +
-    (themeLines.length > 0 ? `<div class="theme">${themeLines.map((l) => `<div>${escapeHtml(l)}</div>`).join("")}</div>` : "") +
+    (themeLines.length > 0
+      ? `<div class="theme">${themeLines.map((l) => `<div>${escapeHtml(l)}</div>`).join("")}</div>`
+      : "") +
     `<ul class="font-list">${fontList}</ul>` +
     `</section>` +
     `<section class="diag-section${info.missingFonts.length > 0 ? " diag-error" : ""}">` +
@@ -480,9 +482,7 @@ function parseWidthArg(argv: string[]): number | undefined {
 async function main(): Promise<void> {
   const pptxPath = process.argv[2];
   if (!pptxPath || pptxPath.startsWith("--")) {
-    console.error(
-      "Usage: pnpm run dev <pptx-file> [--port <port>] [--width <pixels>]",
-    );
+    console.error("Usage: pnpm run dev <pptx-file> [--port <port>] [--width <pixels>]");
     console.error(`Default render width: ${String(DEFAULT_RENDER_WIDTH)}px`);
     process.exit(1);
   }

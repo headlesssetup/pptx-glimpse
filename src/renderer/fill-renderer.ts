@@ -2,6 +2,7 @@ import type { Fill, GradientFill, PatternFill } from "../model/fill.js";
 import type { ArrowEndpoint, ArrowSize, Outline } from "../model/line.js";
 import type { Geometry } from "../model/shape.js";
 import { emuToPixels } from "../utils/emu.js";
+import { asEmu } from "../utils/unit-types.js";
 
 interface FillAttrs {
   attrs: string;
@@ -267,7 +268,7 @@ const ARROW_WIDTH_MULT: Record<ArrowSize, number> = { sm: 2.0, med: 3.0, lg: 5.0
 const OPEN_ARROW_LENGTH_MULT: Record<ArrowSize, number> = { sm: 2.5, med: 3.5, lg: 5.5 };
 const OPEN_ARROW_WIDTH_MULT: Record<ArrowSize, number> = { sm: 2.5, med: 3.5, lg: 5.5 };
 // LibreOffice uses max(lineWidth, 0.7mm) as the base for arrow scaling.
-const MIN_ARROW_BASE_PX = emuToPixels(25200);
+const MIN_ARROW_BASE_PX = emuToPixels(asEmu(25200));
 
 interface ArrowDimensions {
   length: number;
@@ -282,8 +283,7 @@ function arrowDimensions(endpoint: ArrowEndpoint, strokeWidthPx: number): ArrowD
   const base = arrowBasePx(strokeWidthPx);
   const isOpenArrow = endpoint.type === "arrow";
   return {
-    length:
-      (isOpenArrow ? OPEN_ARROW_LENGTH_MULT : ARROW_LENGTH_MULT)[endpoint.length] * base,
+    length: (isOpenArrow ? OPEN_ARROW_LENGTH_MULT : ARROW_LENGTH_MULT)[endpoint.length] * base,
     width: (isOpenArrow ? OPEN_ARROW_WIDTH_MULT : ARROW_WIDTH_MULT)[endpoint.width] * base,
   };
 }

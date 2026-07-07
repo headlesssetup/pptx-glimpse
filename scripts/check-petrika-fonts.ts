@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+
 import { unzipSync } from "fflate";
 
 import { convertPptxToSvg } from "../src/converter.js";
@@ -47,4 +48,4 @@ async function main() {
   console.log("figtree mapping render: notdef count", notdef2);
 }
 
-main();
+main().catch(console.error);

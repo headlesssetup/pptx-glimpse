@@ -6,7 +6,7 @@ import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
   {
-    files: ["src/**/*.ts", "vrt/**/*.ts", "scripts/**/*.ts", "bench/**/*.ts", "e2e/**/*.ts"],
+    files: ["src/**/*.ts", "scripts/**/*.ts"],
     extends: tseslint.configs.recommendedTypeChecked,
     plugins: {
       "simple-import-sort": simpleImportSort,
@@ -32,7 +32,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["scripts/**/*.ts", "vrt/**/*.ts", "bench/**/*.ts", "e2e/**/*.ts"],
+    files: ["scripts/**/*.ts"],
     rules: {
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",

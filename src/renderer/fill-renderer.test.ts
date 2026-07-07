@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { renderFillAttrs, renderLineWithArrowEndpoints, renderOutlineAttrs } from "./fill-renderer.js";
+import {
+  renderFillAttrs,
+  renderLineWithArrowEndpoints,
+  renderOutlineAttrs,
+} from "./fill-renderer.js";
 
 describe("renderFillAttrs", () => {
   it("renders null fill as none", () => {

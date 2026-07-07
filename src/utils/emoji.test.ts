@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  countEmojiGraphemes,
-  isEmojiText,
-  measureEmojiWidth,
-  splitByEmoji,
-} from "./emoji.js";
+import { countEmojiGraphemes, isEmojiText, measureEmojiWidth, splitByEmoji } from "./emoji.js";
 
 describe("splitByEmoji", () => {
   it("通常テキストのみ", () => {

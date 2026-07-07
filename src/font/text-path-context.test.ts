@@ -5,9 +5,9 @@ import { resetFontMapping, setFontMapping } from "./font-mapping-context.js";
 import type { OpentypeFullFont } from "./text-path-context.js";
 import {
   DefaultTextPathFontResolver,
+  familyNameAliases,
   fontStyleKey,
   fontStyleVariants,
-  familyNameAliases,
   getTextPathFontResolver,
   needsSyntheticBold,
   orderFallbackPool,

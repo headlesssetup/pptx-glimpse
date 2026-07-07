@@ -1,15 +1,9 @@
 node_modules/
 dist/
-samples/
+samples/*
+!samples/README.md
 *.tgz
 .DS_Store
 coverage/
 output/
 scripts/fonts/
-vrt/snapshot/diffs/
-vrt/snapshot/fixtures/
-vrt/libreoffice/diffs/
-vrt/libreoffice/snapshots/
-vrt/libreoffice/fixtures/
-demo/.next/
-demo/node_modules/

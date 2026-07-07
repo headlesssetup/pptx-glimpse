@@ -137,7 +137,10 @@ const MAC_BOLD = 0x01;
 const MAC_ITALIC = 0x02;
 
 /** opentype.js フォントの太字/斜体フェイスを判定する */
-export function detectOpentypeFontStyle(font: OpentypeFullFont): { bold: boolean; italic: boolean } {
+export function detectOpentypeFontStyle(font: OpentypeFullFont): {
+  bold: boolean;
+  italic: boolean;
+} {
   const fontWithMeta = font as OpentypeFullFont & {
     names?: {
       fontSubfamily?: Record<string, string>;
@@ -176,11 +179,7 @@ export function needsSyntheticBold(requestedBold: boolean, font: OpentypeFullFon
   return requestedBold && !detectOpentypeFontStyle(font).bold;
 }
 
-function matchesRequestedStyle(
-  font: OpentypeFullFont,
-  bold: boolean,
-  italic: boolean,
-): boolean {
+function matchesRequestedStyle(font: OpentypeFullFont, bold: boolean, italic: boolean): boolean {
   const face = detectOpentypeFontStyle(font);
   if (italic && !bold && face.bold) return false;
   if (bold && !italic && face.italic) return false;
@@ -374,10 +373,7 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       if (!this.styleFallbackWarned.has(warnKey)) {
         this.styleFallbackWarned.add(warnKey);
         const style = `${bold ? "bold" : ""}${bold && italic ? " " : ""}${italic ? "italic" : ""}`;
-        warn(
-          "font.styleFallback",
-          `No ${style} face for "${name}"; using regular`,
-        );
+        warn("font.styleFallback", `No ${style} face for "${name}"; using regular`);
       }
     }
     return relaxed;
