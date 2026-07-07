@@ -6,6 +6,7 @@ import { promisify } from "util";
 import { type WebSocket, WebSocketServer } from "ws";
 
 const DEFAULT_PORT = 3000;
+const DEFAULT_RENDER_WIDTH = 1920;
 const DEBOUNCE_MS = 300;
 const WATCH_DIR = resolve("src");
 const RENDER_TIMEOUT_MS = 30_000;
@@ -20,9 +21,10 @@ interface SlideSvg {
 
 // --- Rendering via child process ---
 
-async function renderSlides(pptxPath: string): Promise<SlideSvg[]> {
+async function renderSlides(pptxPath: string, width: number): Promise<SlideSvg[]> {
   const workerPath = resolve("scripts/dev-server-render.ts");
-  const { stdout } = await execFileAsync("npx", ["tsx", workerPath, pptxPath], {
+  const args = ["tsx", workerPath, pptxPath, "--width", String(width)];
+  const { stdout } = await execFileAsync("npx", args, {
     maxBuffer: MAX_BUFFER,
     timeout: RENDER_TIMEOUT_MS,
   });
@@ -61,7 +63,8 @@ function watchSourceFiles(onChange: () => void): void {
 
 // --- HTML template ---
 
-function generateHtml(slides: SlideSvg[], pptxName: string): string {
+function generateHtml(slides: SlideSvg[], pptxName: string, renderWidth: number): string {
+  const slideContainerStyle = `width: ${String(renderWidth)}px; max-width: none;`;
   const thumbnailsHtml = slides
     .map(
       (s, i) =>
@@ -136,8 +139,7 @@ function generateHtml(slides: SlideSvg[], pptxName: string): string {
       background: #fff;
       border-radius: 4px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      max-width: 100%;
-      max-height: 100%;
+      ${slideContainerStyle}
     }
     #slide-container svg { display: block; width: 100%; height: auto; }
     #info {
@@ -260,30 +262,42 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function parseWidthArg(argv: string[]): number | undefined {
+  const idx = argv.indexOf("--width");
+  if (idx === -1) return undefined;
+  const value = Number(argv[idx + 1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 // --- Main ---
 
 async function main(): Promise<void> {
   const pptxPath = process.argv[2];
-  if (!pptxPath) {
-    console.error("Usage: npm run dev -- <pptx-file> [--port <port>]");
+  if (!pptxPath || pptxPath.startsWith("--")) {
+    console.error(
+      "Usage: pnpm run dev <pptx-file> [--port <port>] [--width <pixels>]",
+    );
+    console.error(`Default render width: ${String(DEFAULT_RENDER_WIDTH)}px`);
     process.exit(1);
   }
 
   const portArgIdx = process.argv.indexOf("--port");
   const port = portArgIdx !== -1 ? Number(process.argv[portArgIdx + 1]) : DEFAULT_PORT;
+  const width = parseWidthArg(process.argv) ?? DEFAULT_RENDER_WIDTH;
 
   const resolvedPath = resolve(pptxPath);
   const pptxName = basename(resolvedPath);
 
   console.log(`Loading: ${resolvedPath}`);
+  console.log(`Render width: ${String(width)}px`);
 
-  let slides = await renderSlides(resolvedPath);
+  let slides = await renderSlides(resolvedPath, width);
   console.log(`Rendered ${String(slides.length)} slide(s)`);
 
   const server = createServer((req, res) => {
     if (req.url === "/" || req.url === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(generateHtml(slides, pptxName));
+      res.end(generateHtml(slides, pptxName, width));
     } else {
       res.writeHead(404);
       res.end("Not Found");
@@ -309,7 +323,7 @@ async function main(): Promise<void> {
     console.log("Re-rendering...");
     broadcast(wss, { type: "rendering" });
 
-    renderSlides(resolvedPath)
+    renderSlides(resolvedPath, width)
       .then((result) => {
         slides = result;
         console.log(`Re-rendered ${String(slides.length)} slide(s)`);
