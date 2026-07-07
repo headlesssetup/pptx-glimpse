@@ -7,6 +7,8 @@ import type { FontMapping } from "./font-mapping.js";
 import { createFontMapping } from "./font-mapping.js";
 import type { OpentypeFont } from "./opentype-text-measurer.js";
 import { OpentypeTextMeasurer } from "./opentype-text-measurer.js";
+import type { RawOpentypeFont, SafeOpentypeFont } from "./safe-opentype-font.js";
+import { wrapOpentypeFontSafe } from "./safe-opentype-font.js";
 import { collectFontFilePaths } from "./system-font-loader.js";
 import type { FallbackFace, OpentypeFullFont, TextPathFontResolver } from "./text-path-context.js";
 import {
@@ -203,9 +205,9 @@ function newFontRegistry(mapping: FontMapping): FontRegistry {
   };
 }
 
-function noteFirstFont(reg: FontRegistry, font: OpentypeFontWithNames): void {
+function noteFirstFont(reg: FontRegistry, font: SafeOpentypeFont): void {
   if (!reg.firstMeasurerFont) reg.firstMeasurerFont = font;
-  if (!reg.firstResolverFont) reg.firstResolverFont = font as unknown as OpentypeFullFont;
+  if (!reg.firstResolverFont) reg.firstResolverFont = font;
 }
 
 /** パース済みフォントの全フェイス名をレジストリに登録する */
@@ -215,14 +217,17 @@ function registerParsedFont(
   names: Iterable<string>,
   embedded = false,
 ): void {
-  noteFirstFont(reg, font);
   const style = getFontStyle(font);
+  // opentype.js の GSUB フィーチャ適用クラッシュから保護するラッパで包む。
+  // getFontStyle は生フォントの names/tables を読むため、ラップ前に済ませる。
+  const safe = wrapOpentypeFontSafe(font as unknown as RawOpentypeFont);
+  noteFirstFont(reg, safe);
   let poolName: string | null = null;
   for (const name of names) {
     poolName ??= name;
     registerFont(
       name,
-      font,
+      safe,
       style,
       reg.reverseMap,
       reg.measurerFonts,
@@ -236,7 +241,7 @@ function registerParsedFont(
     name: poolName ?? "(unnamed)",
     bold: style.bold,
     italic: style.italic,
-    font: font as unknown as OpentypeFullFont,
+    font: safe,
     embedded,
   });
 }
@@ -279,7 +284,7 @@ function buildSetup(reg: FontRegistry): OpentypeSetup | null {
 
 function registerFont(
   name: string,
-  font: OpentypeFontWithNames,
+  font: SafeOpentypeFont,
   style: FontFace,
   reverseMap: Map<string, string[]>,
   measurerFonts: Map<string, OpentypeFont>,
@@ -307,13 +312,13 @@ function registerFont(
  */
 function registerOne(
   name: string,
-  font: OpentypeFontWithNames,
+  font: SafeOpentypeFont,
   style: FontFace,
   measurerFonts: Map<string, OpentypeFont>,
   resolverFonts: Map<string, OpentypeFullFont>,
   plainRegular: Set<string>,
 ): void {
-  const fullFont = font as unknown as OpentypeFullFont;
+  const fullFont = font;
   const isRegular = !style.bold && !style.italic;
 
   if (!isRegular) {
