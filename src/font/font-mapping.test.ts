@@ -1,60 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildFontMappingSuggestion,
   createFontMapping,
   DEFAULT_FONT_MAPPING,
+  formatFontNotFoundMessage,
   type FontMapping,
   getMappedFont,
 } from "./font-mapping.js";
 
 describe("DEFAULT_FONT_MAPPING", () => {
-  it("ラテン文字フォントのマッピングが定義されている", () => {
-    expect(DEFAULT_FONT_MAPPING["Calibri"]).toBe("Carlito");
-    expect(DEFAULT_FONT_MAPPING["Arial"]).toBe("Arimo");
-    expect(DEFAULT_FONT_MAPPING["Times New Roman"]).toBe("Tinos");
-    expect(DEFAULT_FONT_MAPPING["Courier New"]).toBe("Cousine");
-    expect(DEFAULT_FONT_MAPPING["Cambria"]).toBe("Caladea");
-  });
-
-  it("日本語ゴシック系フォントが Noto Sans JP にマッピングされている", () => {
-    expect(DEFAULT_FONT_MAPPING["メイリオ"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["Meiryo"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["游ゴシック"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["Yu Gothic"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["MS ゴシック"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["MS Gothic"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["MS Pゴシック"]).toBe("Noto Sans JP");
-    expect(DEFAULT_FONT_MAPPING["MS PGothic"]).toBe("Noto Sans JP");
-  });
-
-  it("日本語明朝系フォントが Noto Serif CJK JP にマッピングされている", () => {
-    expect(DEFAULT_FONT_MAPPING["MS 明朝"]).toBe("Noto Serif CJK JP");
-    expect(DEFAULT_FONT_MAPPING["MS Mincho"]).toBe("Noto Serif CJK JP");
-    expect(DEFAULT_FONT_MAPPING["MS P明朝"]).toBe("Noto Serif CJK JP");
-    expect(DEFAULT_FONT_MAPPING["MS PMincho"]).toBe("Noto Serif CJK JP");
-    expect(DEFAULT_FONT_MAPPING["游明朝"]).toBe("Noto Serif CJK JP");
-    expect(DEFAULT_FONT_MAPPING["Yu Mincho"]).toBe("Noto Serif CJK JP");
+  it("デフォルトマッピングは空", () => {
+    expect(DEFAULT_FONT_MAPPING).toEqual({});
   });
 });
 
 describe("createFontMapping", () => {
-  it("ユーザーマッピングなしでデフォルトのコピーを返す", () => {
-    const mapping = createFontMapping();
-    expect(mapping["Calibri"]).toBe("Carlito");
-    expect(mapping["Arial"]).toBe("Arimo");
+  it("ユーザーマッピングなしで空オブジェクトを返す", () => {
+    expect(createFontMapping()).toEqual({});
   });
 
-  it("ユーザーマッピングでデフォルトを上書きできる", () => {
-    const mapping = createFontMapping({ Calibri: "Custom Font" });
-    expect(mapping["Calibri"]).toBe("Custom Font");
-    // 他のデフォルトは維持される
-    expect(mapping["Arial"]).toBe("Arimo");
+  it("ユーザーマッピングをそのまま返す", () => {
+    const mapping = createFontMapping({ Calibri: "Carlito", Arial: "Arimo" });
+    expect(mapping).toEqual({ Calibri: "Carlito", Arial: "Arimo" });
   });
 
   it("ユーザーマッピングで新しいエントリを追加できる", () => {
     const mapping = createFontMapping({ "My Custom Font": "Noto Sans" });
-    expect(mapping["My Custom Font"]).toBe("Noto Sans");
-    expect(mapping["Calibri"]).toBe("Carlito");
+    expect(mapping).toEqual({ "My Custom Font": "Noto Sans" });
   });
 });
 
@@ -78,6 +51,7 @@ describe("getMappedFont", () => {
 
   it("マッピングに存在しないフォントは null を返す", () => {
     expect(getMappedFont("Unknown Font", mapping)).toBeNull();
+    expect(getMappedFont("Aptos", mapping)).toBeNull();
   });
 
   it("null または undefined は null を返す", () => {
@@ -86,24 +60,26 @@ describe("getMappedFont", () => {
   });
 
   it("全角英数字を半角に正規化してマッチする", () => {
-    const fullMapping = createFontMapping();
-    // ＭＳ Ｐゴシック（全角P）→ MS Pゴシック（半角P）にマッチ
-    expect(getMappedFont("ＭＳ Ｐゴシック", fullMapping)).toBe("Noto Sans JP");
-    // ＭＳ Ｐ明朝（全角P）→ MS P明朝（半角P）にマッチ
-    expect(getMappedFont("ＭＳ Ｐ明朝", fullMapping)).toBe("Noto Serif CJK JP");
-    // 全角スペース（\u3000）も半角スペースに正規化
-    expect(getMappedFont("ＭＳ\u3000Ｐゴシック", fullMapping)).toBe("Noto Sans JP");
+    const jpMapping: FontMapping = { "MS Pゴシック": "Noto Sans JP" };
+    expect(getMappedFont("ＭＳ Ｐゴシック", jpMapping)).toBe("Noto Sans JP");
+    expect(getMappedFont("ＭＳ\u3000Ｐゴシック", jpMapping)).toBe("Noto Sans JP");
   });
 });
 
-describe("Aptos / Corbel マッピング", () => {
-  it("Aptos ファミリを Carlito にマッピングする", () => {
-    expect(getMappedFont("Aptos", DEFAULT_FONT_MAPPING)).toBe("Carlito");
-    expect(getMappedFont("Aptos Display", DEFAULT_FONT_MAPPING)).toBe("Carlito");
-    expect(getMappedFont("Corbel Light", DEFAULT_FONT_MAPPING)).toBe("Carlito");
+describe("buildFontMappingSuggestion", () => {
+  it("未解決フォントごとにプレースホルダを生成する", () => {
+    expect(buildFontMappingSuggestion(["Aptos", "Corbel Light"])).toEqual({
+      Aptos: "YourSubstitute",
+      "Corbel Light": "YourSubstitute",
+    });
   });
+});
 
-  it("游ゴシック Light を Noto Sans JP にマッピングする", () => {
-    expect(getMappedFont("游ゴシック Light", DEFAULT_FONT_MAPPING)).toBe("Noto Sans JP");
+describe("formatFontNotFoundMessage", () => {
+  it("fontMapping の設定方法を含む", () => {
+    const message = formatFontNotFoundMessage("Aptos");
+    expect(message).toContain("Aptos");
+    expect(message).toContain("fontMapping");
+    expect(message).toContain("Corbel Light");
   });
 });

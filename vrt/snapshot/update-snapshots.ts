@@ -3,6 +3,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import { convertPptxToPng } from "../../src/converter.js";
+import { VRT_FONT_MAPPING } from "../vrt-font-mapping.js";
 import { SHARED_FIXTURE_CASES } from "./vrt-cases.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -15,7 +16,7 @@ const CONCURRENCY = 4;
 async function processFixture(fixturePath: string, name: string): Promise<number> {
   const input = readFileSync(fixturePath);
   console.log(`Processing: ${name}`);
-  const results = await convertPptxToPng(input);
+  const results = await convertPptxToPng(input, { fontMapping: VRT_FONT_MAPPING });
   let count = 0;
 
   for (const result of results) {

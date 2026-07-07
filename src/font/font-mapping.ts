@@ -1,67 +1,21 @@
 /**
- * PPTX フォント名 → OSS 代替フォント (Google Fonts) のマッピング。
- * ユーザーが拡張・上書き可能。
+ * PPTX フォント名 → 代替フォントのマッピング。
+ * ライブラリはデフォルトの置換を持たない。ユーザーが明示的に指定する。
  */
 
 /** フォントマッピングテーブルの型 */
 export type FontMapping = Record<string, string>;
 
-/** デフォルトのフォントマッピングテーブル */
-export const DEFAULT_FONT_MAPPING: Readonly<FontMapping> = {
-  // ラテン文字フォント
-  Calibri: "Carlito",
-  "Calibri Light": "Carlito",
-  // Aptos は Office 2024+ のデフォルトフォント (Calibri の後継)。
-  // 専用のメトリック互換 OSS フォントが無いため Calibri と同じ Carlito に寄せる。
-  Aptos: "Carlito",
-  "Aptos Display": "Carlito",
-  "Aptos Narrow": "Carlito",
-  "Aptos Light": "Carlito",
-  "Aptos SemiBold": "Carlito",
-  Corbel: "Carlito",
-  "Corbel Light": "Carlito",
-  Arial: "Arimo",
-  "Times New Roman": "Tinos",
-  "Courier New": "Cousine",
-  Cambria: "Caladea",
-
-  // 日本語ゴシック系 → Noto Sans JP
-  // "Noto Sans CJK JP" ではなく "Noto Sans JP" を使用する。
-  // NotoSansCJK TTC は最初の1フォントのみ抽出するため JP バリアントが取れるとは限らず、
-  // Docker 環境でダウンロードする standalone NotoSansJP.ttf のフォント名に合わせている。
-  メイリオ: "Noto Sans JP",
-  Meiryo: "Noto Sans JP",
-  游ゴシック: "Noto Sans JP",
-  "游ゴシック Light": "Noto Sans JP",
-  "Yu Gothic": "Noto Sans JP",
-  "Yu Gothic Light": "Noto Sans JP",
-  "MS ゴシック": "Noto Sans JP",
-  "MS Gothic": "Noto Sans JP",
-  "MS Pゴシック": "Noto Sans JP",
-  "MS PGothic": "Noto Sans JP",
-
-  // 日本語明朝系 → Noto Serif CJK JP
-  "MS 明朝": "Noto Serif CJK JP",
-  "MS Mincho": "Noto Serif CJK JP",
-  "MS P明朝": "Noto Serif CJK JP",
-  "MS PMincho": "Noto Serif CJK JP",
-  游明朝: "Noto Serif CJK JP",
-  "Yu Mincho": "Noto Serif CJK JP",
-};
+/** 空のデフォルトマッピング (後方互換のため export を維持) */
+export const DEFAULT_FONT_MAPPING: Readonly<FontMapping> = {};
 
 /**
- * デフォルトマッピングとユーザーマッピングをマージしたテーブルを生成する。
- * ユーザー指定が優先される。
+ * ユーザーマッピングテーブルを返す。未指定時は空オブジェクト。
  */
 export function createFontMapping(userMapping?: FontMapping): FontMapping {
-  if (!userMapping) return { ...DEFAULT_FONT_MAPPING };
-  return { ...DEFAULT_FONT_MAPPING, ...userMapping };
+  return { ...(userMapping ?? {}) };
 }
 
-/**
- * マッピングテーブルから OSS 代替フォント名を取得する。
- * 大文字小文字を区別せずにルックアップする。
- */
 /**
  * 全角英数字・記号を半角に正規化する。
  * PPTX テーマでは「ＭＳ Ｐゴシック」のように全角が使われることがある。
@@ -98,4 +52,23 @@ export function getMappedFont(
   }
 
   return null;
+}
+
+/** 未解決フォント向けの fontMapping 設定例を生成する */
+export function buildFontMappingSuggestion(fonts: readonly string[]): FontMapping {
+  const mapping: FontMapping = {};
+  for (const font of fonts) {
+    mapping[font] = "YourSubstitute";
+  }
+  return mapping;
+}
+
+/** 未解決フォントの警告メッセージ (font.notFound 用) */
+export function formatFontNotFoundMessage(fontFamily: string): string {
+  return (
+    `Font not found: "${fontFamily}". ` +
+    `Install it on the render host, embed it in the PPTX, or add fontMapping ` +
+    `(e.g. { "${fontFamily}": "YourSubstitute" }). ` +
+    `Map weight-specific faces separately when needed (e.g. "Corbel Light").`
+  );
 }

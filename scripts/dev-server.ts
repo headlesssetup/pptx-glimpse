@@ -77,6 +77,17 @@ function generateDiagnosticsHtml(info: DevRenderInfo): string {
     .map((font) => `<li>${escapeHtml(font)}</li>`)
     .join("");
 
+  const missingList = info.missingFonts
+    .map((font) => `<li><code>${escapeHtml(font)}</code></li>`)
+    .join("");
+
+  const mappingSuggestion =
+    info.missingFonts.length > 0
+      ? `<pre class="mapping-suggestion">${escapeHtml(
+          JSON.stringify({ fontMapping: info.fontMappingSuggestion }, null, 2),
+        )}</pre>`
+      : "";
+
   const mappingRows = info.fontMappings
     .map(
       (m) =>
@@ -146,11 +157,19 @@ function generateDiagnosticsHtml(info: DevRenderInfo): string {
     (themeLines.length > 0 ? `<div class="theme">${themeLines.map((l) => `<div>${escapeHtml(l)}</div>`).join("")}</div>` : "") +
     `<ul class="font-list">${fontList}</ul>` +
     `</section>` +
+    `<section class="diag-section${info.missingFonts.length > 0 ? " diag-error" : ""}">` +
+    `<h2>Missing fonts</h2>` +
+    (info.missingFonts.length > 0
+      ? `<p class="hint">Not embedded and not installed locally. Add <code>fontMapping</code> or install/embed these fonts.</p>` +
+        `<ul class="font-list missing">${missingList}</ul>` +
+        mappingSuggestion
+      : '<p class="empty">All deck fonts resolved (embedded, local, or mapped).</p>') +
+    `</section>` +
     `<section class="diag-section">` +
-    `<h2>Font replacements</h2>` +
+    `<h2>Configured font mappings</h2>` +
     (info.fontMappings.length > 0
       ? `<table class="diag-table"><tbody>${mappingRows}</tbody></table>`
-      : '<p class="empty">No mapped replacements for fonts in this deck.</p>') +
+      : '<p class="empty">No fontMapping configured for fonts in this deck.</p>') +
     `</section>` +
     `<section class="diag-section">` +
     `<h2>Embedded fonts</h2>` +
@@ -293,7 +312,18 @@ function generateHtml(
     .diag-table .arrow { color: #4472c4; width: 16px; text-align: center; }
     .diag-table tr.missing td { color: #f44336; }
     .diag-table tr.loaded td:last-child { color: #4caf50; }
-    .empty { color: #555; font-style: italic; }
+    .diag-section.diag-error h2 { color: #f87171; }
+    .mapping-suggestion {
+      margin-top: 8px;
+      padding: 10px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      font-size: 11px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .font-list.missing li { color: #f87171; }
     .hint { color: #555; margin-bottom: 8px; }
     .warn-list { display: flex; flex-direction: column; gap: 8px; }
     .warn-group {

@@ -4,6 +4,7 @@ import {
 } from "../utils/text-measure.js";
 import { warn } from "../warning-logger.js";
 import { getCjkFallbackFonts } from "./cjk-font-fallback.js";
+import { formatFontNotFoundMessage } from "./font-mapping.js";
 import { getCurrentMappedFont } from "./font-mapping-context.js";
 import type { TextMeasurer } from "./text-measurer.js";
 
@@ -145,7 +146,7 @@ export class OpentypeTextMeasurer implements TextMeasurer {
     // フォント未検出の警告
     if (!this.warnedFonts.has(name)) {
       this.warnedFonts.add(name);
-      warn("font.notFound", `Font not found: "${name}"`);
+      warn("font.notFound", formatFontNotFoundMessage(name));
     }
 
     return null;

@@ -9,6 +9,7 @@ import {
   fontStyleVariants,
   familyNameAliases,
   getTextPathFontResolver,
+  needsSyntheticBold,
   orderFallbackPool,
   resetTextPathFontResolver,
   setTextPathFontResolver,
@@ -48,6 +49,21 @@ describe("TextPathFontResolver context", () => {
     setTextPathFontResolver(resolver);
     resetTextPathFontResolver();
     expect(getTextPathFontResolver()).toBeNull();
+  });
+});
+
+describe("needsSyntheticBold", () => {
+  it("太字指定かつ実フェイスが Regular のとき true", () => {
+    expect(needsSyntheticBold(true, createMockFont("Corbel Light"))).toBe(true);
+  });
+
+  it("太字指定なし、または実フェイスが Bold のとき false", () => {
+    expect(needsSyntheticBold(false, createMockFont("Corbel Light"))).toBe(false);
+    const boldFont: OpentypeFullFont = {
+      ...createMockFont("Corbel Bold"),
+      tables: { os2: { fsSelection: 0x20 } },
+    };
+    expect(needsSyntheticBold(true, boldFont)).toBe(false);
   });
 });
 
@@ -276,7 +292,7 @@ describe("DefaultTextPathFontResolver グリフカバレッジフォールバッ
     expect(resolver.resolveFont("NarrowFont", null, undefined, undefined, "Hello")).toBe(narrow);
   });
 
-  it("defaultFont にグリフが無い場合もプールからフォールバック", () => {
+  it("名前解決に失敗した場合は defaultFont を返す (プールへの自動置換はしない)", () => {
     const narrow = createCoverageFont("NarrowDefault", LATIN);
     const wide = createCoverageFont("WideFont", LATVIAN);
     const fonts = new Map([["WideFont", wide]]);
@@ -284,7 +300,9 @@ describe("DefaultTextPathFontResolver グリフカバレッジフォールバッ
       { name: "NarrowDefault", bold: false, italic: false, font: narrow },
       { name: "WideFont", bold: false, italic: false, font: wide },
     ]);
-    expect(resolver.resolveFont("MissingFamily", null, undefined, undefined, "stāsts")).toBe(wide);
+    expect(resolver.resolveFont("MissingFamily", null, undefined, undefined, "stāsts")).toBe(
+      narrow,
+    );
   });
 
   it("フォールバックは同一ファミリ内で要求スタイルのフェイスを選ぶ", () => {
@@ -462,7 +480,7 @@ describe("実フォント優先", () => {
     expect(resolver.resolveFont("Aptos", null, null, { bold: true })).toBe(aptosBold);
   });
 
-  it("埋め込み Regular よりマッピング先の Bold を優先する", () => {
+  it("埋め込み Light フェイスは bold 指定でも Light を使う", () => {
     const corbelLight = createMockFont("Corbel-Light-Embedded");
     const carlitoBold = createMockFont("Carlito-Bold");
     const fonts = new Map([
@@ -471,10 +489,10 @@ describe("実フォント優先", () => {
     ]);
     setFontMapping({ "Corbel Light": "Carlito" });
     const resolver = new DefaultTextPathFontResolver(fonts);
-    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(carlitoBold);
+    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(corbelLight);
   });
 
-  it("Corbel Light + bold ではベースファミリ Corbel の Bold を使う", () => {
+  it("Corbel Light + bold ではベースファミリ Corbel の Bold ではなく Light を使う", () => {
     const corbelLight = createMockFont("Corbel-Light-Embedded");
     const corbelBold = createMockFont("Corbel-Bold");
     const fonts = new Map([
@@ -482,7 +500,7 @@ describe("実フォント優先", () => {
       [fontStyleKey("Corbel", true, false), corbelBold],
     ]);
     const resolver = new DefaultTextPathFontResolver(fonts);
-    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(corbelBold);
+    expect(resolver.resolveFont("Corbel Light", null, null, { bold: true })).toBe(corbelLight);
   });
 });
 

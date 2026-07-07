@@ -836,23 +836,21 @@ describe("latin/ea フォント切り替え", () => {
 });
 
 describe("buildFontFamilyValue", () => {
-  it("単一フォント + メトリクスフォールバック + 汎用ファミリを返す", () => {
-    expect(buildFontFamilyValue(["Calibri"])).toBe("Calibri, Carlito, sans-serif");
+  it("単一フォント + 汎用ファミリを返す", () => {
+    expect(buildFontFamilyValue(["Calibri"])).toBe("Calibri, sans-serif");
   });
 
-  it("latin と ea の両方をフォールバックリストに含める", () => {
-    expect(buildFontFamilyValue(["Calibri", "Meiryo"])).toBe(
-      "Calibri, Carlito, Meiryo, 'Noto Sans JP', sans-serif",
-    );
+  it("latin と ea の両方を含める", () => {
+    expect(buildFontFamilyValue(["Calibri", "Meiryo"])).toBe("Calibri, Meiryo, sans-serif");
   });
 
   it("重複するフォント名を除去する", () => {
-    expect(buildFontFamilyValue(["Calibri", "Calibri"])).toBe("Calibri, Carlito, sans-serif");
+    expect(buildFontFamilyValue(["Calibri", "Calibri"])).toBe("Calibri, sans-serif");
   });
 
   it("null を含むリストでも正しく動作する", () => {
-    expect(buildFontFamilyValue(["Calibri", null])).toBe("Calibri, Carlito, sans-serif");
-    expect(buildFontFamilyValue([null, "Meiryo"])).toBe("Meiryo, 'Noto Sans JP', sans-serif");
+    expect(buildFontFamilyValue(["Calibri", null])).toBe("Calibri, sans-serif");
+    expect(buildFontFamilyValue([null, "Meiryo"])).toBe("Meiryo, sans-serif");
   });
 
   it("すべて null の場合は null を返す", () => {
@@ -861,29 +859,21 @@ describe("buildFontFamilyValue", () => {
   });
 
   it("スペースを含むフォント名をシングルクォートで囲む", () => {
-    expect(buildFontFamilyValue(["Times New Roman"])).toBe(
-      "'Times New Roman', Tinos, 'Liberation Serif', serif",
-    );
+    expect(buildFontFamilyValue(["Times New Roman"])).toBe("'Times New Roman', serif");
     expect(buildFontFamilyValue(["Calibri", "Noto Sans JP"])).toBe(
-      "Calibri, Carlito, 'Noto Sans JP', sans-serif",
+      "Calibri, 'Noto Sans JP', sans-serif",
     );
   });
 
   it("serif 系フォントの汎用ファミリが serif になる", () => {
-    expect(buildFontFamilyValue(["Times New Roman"])).toBe(
-      "'Times New Roman', Tinos, 'Liberation Serif', serif",
-    );
-    expect(buildFontFamilyValue(["Yu Mincho"])).toBe(
-      "'Yu Mincho', 'Noto Serif CJK JP', 'Noto Sans JP', serif",
-    );
-    expect(buildFontFamilyValue(["游明朝"])).toBe(
-      "游明朝, 'Noto Serif CJK JP', 'Noto Sans JP', serif",
-    );
+    expect(buildFontFamilyValue(["Times New Roman"])).toBe("'Times New Roman', serif");
+    expect(buildFontFamilyValue(["Yu Mincho"])).toBe("'Yu Mincho', serif");
+    expect(buildFontFamilyValue(["游明朝"])).toBe("游明朝, serif");
   });
 
   it("sans-serif 系フォントの汎用ファミリが sans-serif になる", () => {
-    expect(buildFontFamilyValue(["Arial"])).toBe("Arial, Arimo, 'Liberation Sans', sans-serif");
-    expect(buildFontFamilyValue(["Meiryo"])).toBe("Meiryo, 'Noto Sans JP', sans-serif");
+    expect(buildFontFamilyValue(["Arial"])).toBe("Arial, sans-serif");
+    expect(buildFontFamilyValue(["Meiryo"])).toBe("Meiryo, sans-serif");
   });
 
   it("フォールバックフォントが元フォントと同じ場合は重複しない", () => {

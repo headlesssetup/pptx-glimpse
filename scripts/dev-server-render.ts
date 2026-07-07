@@ -1,7 +1,12 @@
 import { readFileSync } from "fs";
 
 import { convertPptxToSvg, collectUsedFonts } from "../src/index.js";
-import { createFontMapping, getMappedFont } from "../src/font/font-mapping.js";
+import {
+  buildFontMappingSuggestion,
+  createFontMapping,
+  getMappedFont,
+  type FontMapping,
+} from "../src/font/font-mapping.js";
 import { unwrapEmbeddedFontData } from "../src/font/eot.js";
 import { parseRelationships, resolveRelationshipTarget } from "../src/parser/relationship-parser.js";
 import type { PptxArchive } from "../src/parser/pptx-reader.js";
@@ -14,6 +19,7 @@ import {
 } from "../src/warning-logger.js";
 
 const DEFAULT_RENDER_WIDTH = 1920;
+const FONT_NOT_FOUND_RE = /Font not found: "([^"]+)"/;
 
 export interface DevSlideSvg {
   slideNumber: number;
@@ -35,7 +41,12 @@ export interface DevRenderInfo {
   renderWidth: number;
   slideCount: number;
   usedFonts: ReturnType<typeof collectUsedFonts>;
+  /** ユーザーが指定した fontMapping のうち、このデッキで使われているもの */
   fontMappings: DevFontMapping[];
+  /** 埋め込み・ローカル・マッピングのいずれでも解決できなかったフォント */
+  missingFonts: string[];
+  /** missingFonts 向けの fontMapping 設定例 */
+  fontMappingSuggestion: FontMapping;
   embeddedFonts: DevEmbeddedFont[];
   warnings: WarningEntry[];
   warningSummary: ReturnType<typeof getWarningSummary>;
@@ -68,8 +79,10 @@ function scaleSvgToWidth(svg: string, targetWidth: number): string {
     .replace(/\bheight="\d+(?:\.\d+)?"/, `height="${String(targetHeight)}"`);
 }
 
-function collectFontMappings(usedFontNames: string[]): DevFontMapping[] {
-  const mapping = createFontMapping();
+function collectConfiguredFontMappings(
+  usedFontNames: string[],
+  mapping: FontMapping,
+): DevFontMapping[] {
   const out: DevFontMapping[] = [];
   for (const from of usedFontNames) {
     const to = getMappedFont(from, mapping);
@@ -78,6 +91,16 @@ function collectFontMappings(usedFontNames: string[]): DevFontMapping[] {
     }
   }
   return out.sort((a, b) => a.from.localeCompare(b.from));
+}
+
+function collectMissingFonts(warnings: readonly WarningEntry[]): string[] {
+  const missing = new Set<string>();
+  for (const entry of warnings) {
+    if (entry.feature !== "font.notFound") continue;
+    const match = FONT_NOT_FOUND_RE.exec(entry.message);
+    if (match) missing.add(match[1]);
+  }
+  return [...missing].sort();
 }
 
 function isEmbeddedSlotDecoded(archive: PptxArchive, rId: string | undefined): boolean {
@@ -125,14 +148,17 @@ async function main(): Promise<void> {
   const input = readFileSync(pptxPath);
   const usedFonts = collectUsedFonts(input);
   const data = parsePptxData(input);
+  const userFontMapping = createFontMapping();
 
-  const slides = await convertPptxToSvg(input, { logLevel: "debug" });
+  const slides = await convertPptxToSvg(input, { logLevel: "debug", fontMapping: userFontMapping });
   const scaledSlides = slides.map((slide) => ({
     slideNumber: slide.slideNumber,
     svg: scaleSvgToWidth(slide.svg, width),
   }));
 
   const embeddedFonts = collectEmbeddedFontInfo(data.archive, data.presInfo.embeddedFonts);
+  const warnings = [...getWarningEntries()];
+  const missingFonts = collectMissingFonts(warnings);
 
   const output: DevRenderOutput = {
     slides: scaledSlides,
@@ -140,9 +166,11 @@ async function main(): Promise<void> {
       renderWidth: width,
       slideCount: scaledSlides.length,
       usedFonts,
-      fontMappings: collectFontMappings(usedFonts.fonts),
+      fontMappings: collectConfiguredFontMappings(usedFonts.fonts, userFontMapping),
+      missingFonts,
+      fontMappingSuggestion: buildFontMappingSuggestion(missingFonts),
       embeddedFonts,
-      warnings: [...getWarningEntries()],
+      warnings,
       warningSummary: getWarningSummary(),
     },
   };

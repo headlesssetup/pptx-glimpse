@@ -29,7 +29,11 @@ export interface ConvertOptions {
   logLevel?: LogLevel;
   /** 追加のフォントディレクトリパス。システムフォントに加えて検索する */
   fontDirs?: string[];
-  /** PPTX フォント名 → OSS 代替フォントのカスタムマッピング。デフォルトマッピングにマージされる */
+  /**
+   * PPTX フォント名 → 代替フォントのマッピング。
+   * 埋め込み・ローカルインストールで解決できないフォントにのみ適用される。
+   * ライブラリはデフォルトの置換を持たないため、不足時は font.notFound 警告が出る。
+   */
   fontMapping?: FontMapping;
   /** true のとき OS のシステムフォントをスキャンせず fontDirs のみを使用する */
   skipSystemFonts?: boolean;

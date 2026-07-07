@@ -5,6 +5,7 @@
 
 import { warn } from "../warning-logger.js";
 import { getCjkFallbackFonts } from "./cjk-font-fallback.js";
+import { formatFontNotFoundMessage } from "./font-mapping.js";
 import { getCurrentMappedFont } from "./font-mapping-context.js";
 
 export interface OpentypePath {
@@ -123,6 +124,70 @@ export function familyNameAliases(name: string): string[] {
     .replace(/\s+(Extra\s+Light|Semi\s*Bold|Ultra\s+Light|Light|Thin|Medium|Heavy|Black)\s*$/i, "")
     .trim();
   return stripped !== name ? [stripped] : [];
+}
+
+/** ファミリ名に Light / Thin 等のウェイトが含まれるか */
+export function hasEncodedWeight(name: string): boolean {
+  return /\b(Extra\s+Light|Ultra\s+Light|Light|Thin|Medium|Heavy|Black)\b/i.test(name);
+}
+
+const FS_ITALIC = 0x01;
+const FS_BOLD = 0x20;
+const MAC_BOLD = 0x01;
+const MAC_ITALIC = 0x02;
+
+/** opentype.js フォントの太字/斜体フェイスを判定する */
+export function detectOpentypeFontStyle(font: OpentypeFullFont): { bold: boolean; italic: boolean } {
+  const fontWithMeta = font as OpentypeFullFont & {
+    names?: {
+      fontSubfamily?: Record<string, string>;
+      preferredSubfamily?: Record<string, string>;
+    };
+    tables?: { os2?: { fsSelection?: number }; head?: { macStyle?: number } };
+  };
+  const fsSelection = fontWithMeta.tables?.os2?.fsSelection ?? 0;
+  const macStyle = fontWithMeta.tables?.head?.macStyle ?? 0;
+
+  const sub: string[] = [];
+  if (fontWithMeta.names?.fontSubfamily) {
+    sub.push(...Object.values(fontWithMeta.names.fontSubfamily));
+  }
+  if (fontWithMeta.names?.preferredSubfamily) {
+    sub.push(...Object.values(fontWithMeta.names.preferredSubfamily));
+  }
+  const joined = sub.join(" ").toLowerCase();
+
+  const bold =
+    (fsSelection & FS_BOLD) !== 0 ||
+    (macStyle & MAC_BOLD) !== 0 ||
+    /\b(bold|black|heavy)\b/.test(joined);
+  const italic =
+    (fsSelection & FS_ITALIC) !== 0 ||
+    (macStyle & MAC_ITALIC) !== 0 ||
+    /\b(italic|oblique)\b/.test(joined);
+  return { bold, italic };
+}
+
+/** 太字指定だが実フェイスが Regular のときの幅倍率 (PowerPoint の faux bold に合わせる) */
+export const SYNTHETIC_BOLD_WIDTH_FACTOR = 1.05;
+
+/** faux bold 用ストローク幅 (font size px に対する比率) */
+export const SYNTHETIC_BOLD_STROKE_RATIO = 0.04;
+
+/** 太字指定だが解決されたフォントが Bold フェイスでない場合に true */
+export function needsSyntheticBold(requestedBold: boolean, font: OpentypeFullFont): boolean {
+  return requestedBold && !detectOpentypeFontStyle(font).bold;
+}
+
+function matchesRequestedStyle(
+  font: OpentypeFullFont,
+  bold: boolean,
+  italic: boolean,
+): boolean {
+  const face = detectOpentypeFontStyle(font);
+  if (italic && !bold && face.bold) return false;
+  if (bold && !italic && face.italic) return false;
+  return true;
 }
 
 /**
@@ -247,32 +312,22 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       return primary;
     }
 
-    // 名前解決に全て失敗: フォント未検出の警告 (従来どおり)
+    // 名前解決に全て失敗: 警告のみ。別フォントへの自動置換は行わない。
     for (const name of [fontFamily, fontFamilyEa, jpanFallback]) {
       if (name && !this.warnedFonts.has(name)) {
         this.warnedFonts.add(name);
-        warn("font.notFound", `Font not found: "${name}"`);
+        warn("font.notFound", formatFontNotFoundMessage(name));
       }
     }
 
-    // 優先順プールを既定として使う。単一の defaultFont と異なり
-    // 要求スタイル (Bold/Italic) のフェイスとグリフカバレッジを考慮できる。
-    const pooled = this.findPoolDefault(bold, italic, text);
-    if (pooled) {
-      if (text && !fontCoversText(pooled.font, text)) {
-        this.warnMissingGlyphs(
-          fontFamily ?? fontFamilyEa,
-          collectMissingChars(pooled.font, text),
-          null,
-        );
-      }
-      return pooled.font;
-    }
     return this.defaultFont;
   }
 
   private findFontCandidates(name: string, bold: boolean, italic: boolean): OpentypeFullFont[] {
-    const variants = fontStyleVariants(bold, italic);
+    // Light / Thin 等、ファミリ名にウェイトが含まれる場合は PowerPoint と同様に
+    // 太字属性を無視して指定フェイスを使う。
+    const effectiveBold = bold && !hasEncodedWeight(name);
+    const variants = fontStyleVariants(effectiveBold, italic);
     const regularIdx = variants.findIndex(([b, i]) => !b && !i);
     const strictVariants = regularIdx === -1 ? variants : variants.slice(0, regularIdx);
     const relaxedVariants = regularIdx === -1 ? [] : variants.slice(regularIdx);
@@ -282,7 +337,9 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       const tryName = (searchName: string): void => {
         for (const [b, i] of variantList) {
           const font = this.fonts.get(fontStyleKey(searchName, b, i));
-          if (font && !out.includes(font)) out.push(font);
+          if (font && !out.includes(font) && matchesRequestedStyle(font, bold, italic)) {
+            out.push(font);
+          }
         }
       };
 
@@ -298,7 +355,13 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       if (mapped) {
         for (const fallback of getCjkFallbackFonts(mapped)) {
           const fallbackFont = this.fonts.get(fallback);
-          if (fallbackFont && !out.includes(fallbackFont)) out.push(fallbackFont);
+          if (
+            fallbackFont &&
+            !out.includes(fallbackFont) &&
+            matchesRequestedStyle(fallbackFont, bold, italic)
+          ) {
+            out.push(fallbackFont);
+          }
         }
       }
 
@@ -373,45 +436,6 @@ export class DefaultTextPathFontResolver implements TextPathFontResolver {
       if (face) return face;
     }
     return null;
-  }
-
-  /**
-   * 名前解決に全て失敗した場合の既定フォントをプールから選ぶ。
-   * Regular フェイスが (テキストをカバー) する最初のファミリに固定し、
-   * その中で要求スタイルに最も近いフェイスを返す。
-   * どのファミリもカバーしない場合はカバレッジ条件なしで再探索する
-   * (従来の .notdef 描画に相当するが、スタイルは維持される)。
-   */
-  private findPoolDefault(bold: boolean, italic: boolean, text?: string): FallbackFace | null {
-    const cacheKey = `d|${bold ? "b" : ""}${italic ? "i" : ""}|${text ?? ""}`;
-    const cached = this.coverageCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-
-    let result: FallbackFace | null = null;
-    for (const faces of this.familyPool) {
-      const regular = faces.find(
-        (f) => !f.bold && !f.italic && (!text || fontCoversText(f.font, text)),
-      );
-      if (!regular) continue;
-      result = this.pickCoveringFace(faces, bold, italic, text) ?? regular;
-      break;
-    }
-    if (!result) {
-      for (const faces of this.familyPool) {
-        const face = this.pickCoveringFace(faces, bold, italic, text);
-        if (face) {
-          result = face;
-          break;
-        }
-      }
-    }
-    if (!result && text) {
-      result = this.findPoolDefault(bold, italic);
-    }
-
-    if (this.coverageCache.size >= COVERAGE_CACHE_LIMIT) this.coverageCache.clear();
-    this.coverageCache.set(cacheKey, result);
-    return result;
   }
 
   private warnMissingGlyphs(

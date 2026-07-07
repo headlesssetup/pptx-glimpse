@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 
 import { convertPptxToPng } from "../../src/converter.js";
 import { compareImages } from "../compare-utils.js";
+import { VRT_FONT_MAPPING } from "../vrt-font-mapping.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_DIR = join(__dirname, "snapshots");
@@ -67,7 +68,7 @@ describeOrSkip("LibreOffice Visual Regression Tests", { timeout: 60000 }, () => 
     describe(name, () => {
       itOrSkip("should match LibreOffice reference", async () => {
         const input = readFileSync(fixturePath);
-        const results = await convertPptxToPng(input);
+        const results = await convertPptxToPng(input, { fontMapping: VRT_FONT_MAPPING });
 
         for (const result of results) {
           const refPath = join(SNAPSHOT_DIR, `${name}-slide${result.slideNumber}.png`);
