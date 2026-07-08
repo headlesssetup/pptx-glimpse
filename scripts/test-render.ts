@@ -8,12 +8,14 @@ interface CliOptions {
   filePath: string;
   outputDir: string;
   steps: boolean;
+  svg: boolean;
   width?: number;
 }
 
 function parseArgs(argv: string[]): CliOptions {
   const positional: string[] = [];
   let steps = false;
+  let svg = false;
   let width: number | undefined;
   let outputDir = resolve("./output");
 
@@ -21,6 +23,8 @@ function parseArgs(argv: string[]): CliOptions {
     const arg = argv[i];
     if (arg === "--steps") {
       steps = true;
+    } else if (arg === "--svg") {
+      svg = true;
     } else if (arg === "--width" && argv[i + 1]) {
       width = Number(argv[++i]);
     } else if (arg === "--out" && argv[i + 1]) {
@@ -32,15 +36,17 @@ function parseArgs(argv: string[]): CliOptions {
 
   const filePath = positional[0];
   if (!filePath) {
-    console.error("Usage: pnpm render -- <pptx-file> [--steps] [--width 1920] [--out ./output]");
+    console.error(
+      "Usage: pnpm render -- <pptx-file> [--steps] [--width 1920] [--out ./output] [--svg]",
+    );
     process.exit(1);
   }
 
-  return { filePath, outputDir, steps, width };
+  return { filePath, outputDir, steps, svg, width };
 }
 
 async function main(): Promise<void> {
-  const { filePath, outputDir, steps, width } = parseArgs(process.argv.slice(2));
+  const { filePath, outputDir, steps, svg, width } = parseArgs(process.argv.slice(2));
   mkdirSync(outputDir, { recursive: true });
 
   const input = readFileSync(filePath);
@@ -49,20 +55,23 @@ async function main(): Promise<void> {
   console.log(`Converting: ${filePath}`);
   console.log(`Output dir: ${outputDir}`);
   if (steps) console.log("Animation steps: enabled");
+  if (svg) console.log("SVG export: enabled");
   console.log("");
 
   const convertOptions = { logLevel: "warn" as const, animationSteps: steps, width };
 
-  const svgResults = await convertPptxToSvg(input, convertOptions);
   const pngResults = await convertPptxToPng(input, convertOptions);
 
-  for (const svg of svgResults) {
-    const fileName = steps
-      ? frameFileName({ slideNumber: svg.slideNumber, stepIndex: svg.stepIndex }, "svg")
-      : `${name}-slide${svg.slideNumber}.svg`;
-    const svgPath = join(outputDir, fileName);
-    writeFileSync(svgPath, svg.svg);
-    console.log(`  SVG: ${svgPath}`);
+  if (svg) {
+    const svgResults = await convertPptxToSvg(input, convertOptions);
+    for (const frame of svgResults) {
+      const fileName = steps
+        ? frameFileName({ slideNumber: frame.slideNumber, stepIndex: frame.stepIndex }, "svg")
+        : `${name}-slide${frame.slideNumber}.svg`;
+      const svgPath = join(outputDir, fileName);
+      writeFileSync(svgPath, frame.svg);
+      console.log(`  SVG: ${svgPath}`);
+    }
   }
 
   for (const png of pngResults) {

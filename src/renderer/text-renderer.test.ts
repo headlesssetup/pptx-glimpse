@@ -1117,6 +1117,7 @@ describe("renderTextBody (path mode)", () => {
     const result = renderTextBody(textBody, makeTransform(SLIDE_WIDTH, SLIDE_HEIGHT));
     expect(result).toContain("<path");
     expect(result).toContain("<text");
+    expect(result).toContain('font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, emoji, sans-serif"');
     expect(result).toContain("Apple Color Emoji");
     expect(result).toContain("👋");
   });

@@ -2,6 +2,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { extname, join } from "node:path";
 
+const LINUX_EMOJI_FONT_CANDIDATES = [
+  "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+  "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+  "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+];
+
 const FONT_EXTENSIONS = new Set([".ttf", ".otf"]);
 
 /**
@@ -74,6 +80,21 @@ function walk(dir: string, result: string[]): void {
  *
  * 結果はモジュールレベルでキャッシュされ、同一引数での再呼び出しは即座に返る。
  */
+/** resvg PNG 変換用のカラー絵文字フォントパス (存在するもののみ) */
+export function getEmojiFontPaths(): string[] {
+  const os = platform();
+  switch (os) {
+    case "darwin":
+      return ["/System/Library/Fonts/Apple Color Emoji.ttc"].filter(existsSync);
+    case "win32":
+      return ["C:\\Windows\\Fonts\\seguiemj.ttf"].filter(existsSync);
+    case "linux":
+      return LINUX_EMOJI_FONT_CANDIDATES.filter(existsSync);
+    default:
+      return [];
+  }
+}
+
 export function collectFontFilePaths(additionalDirs?: string[], skipSystemFonts = false): string[] {
   const dirs = additionalDirs ?? [];
   const dirsKey = dirs.join("\0");

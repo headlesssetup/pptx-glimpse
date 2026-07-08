@@ -7,6 +7,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 // が中心なので、`DefaultTextMeasurer` フォールバックで十分。
 vi.mock("./font/system-font-loader.js", () => ({
   collectFontFilePaths: vi.fn(() => []),
+  getEmojiFontPaths: vi.fn(() => []),
   getSystemFontDirs: vi.fn(() => []),
 }));
 
@@ -345,6 +346,13 @@ describe("convertPptxToPng", () => {
 
     expect(results[0].width).toBe(480);
     expect(results[0].height).toBeGreaterThan(0);
+  });
+
+  it("defaults to 1920px output width", async () => {
+    const results = await convertPptxToPng(testPptx);
+
+    expect(results[0].width).toBe(1920);
+    expect(results[0].height).toBe(1080);
   });
 });
 

@@ -1003,7 +1003,7 @@ function renderEmojiAsText(
   const fillAttrs = buildPathFillAttrs(props);
   const svg =
     `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" ` +
-    `font-family=${EMOJI_FONT_FAMILY} font-size="${fontSizePx.toFixed(2)}" ` +
+    `font-family="${EMOJI_FONT_FAMILY}" font-size="${fontSizePx.toFixed(2)}" ` +
     `${fillAttrs}>${escapeXml(text)}</text>`;
   return { svg, width };
 }

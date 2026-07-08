@@ -1,6 +1,6 @@
 /** SVG <text> 用のクロスプラットフォーム絵文字フォントスタック */
 export const EMOJI_FONT_FAMILY =
-  '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", emoji, sans-serif';
+  "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, emoji, sans-serif";
 
 const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
 

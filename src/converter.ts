@@ -6,7 +6,7 @@ import { createFontMapping } from "./font/font-mapping.js";
 import { resetFontMapping, setFontMapping } from "./font/font-mapping-context.js";
 import { createOpentypeSetupFromSystem } from "./font/opentype-helpers.js";
 import { resetScriptFonts, setScriptFonts } from "./font/script-font-context.js";
-import { collectFontFilePaths } from "./font/system-font-loader.js";
+import { collectFontFilePaths, getEmojiFontPaths } from "./font/system-font-loader.js";
 import { resetTextMeasurer, setTextMeasurer } from "./font/text-measurer.js";
 import { resetTextPathFontResolver, setTextPathFontResolver } from "./font/text-path-context.js";
 import type { ShapeElement, SlideElement } from "./model/shape.js";
@@ -21,7 +21,7 @@ import { flushWarnings, initWarningLogger, warn } from "./warning-logger.js";
 export interface ConvertOptions {
   /** 変換対象のスライド番号 (1始まり)。未指定で全スライド */
   slides?: number[];
-  /** 出力画像の幅 (ピクセル)。デフォルト: 960 */
+  /** 出力画像の幅 (ピクセル)。デフォルト: 1920 */
   width?: number;
   /** 出力画像の高さ (ピクセル)。widthと同時指定時はwidthが優先 */
   height?: number;
@@ -158,7 +158,15 @@ let cachedFontBuffersKey: string | null = null;
  * fontBuffers (生バイト) として渡す必要がある。
  * 合計サイズが MAX_TOTAL_FONT_BUFFER_BYTES を超えた時点で読み込みを打ち切る。
  */
-const MAX_TOTAL_FONT_BUFFER_BYTES = 100 * 1024 * 1024; // 100MB
+const MAX_OTHER_FONT_BUFFER_BYTES = 100 * 1024 * 1024; // 100MB
+
+function readFontBuffer(path: string): Uint8Array | null {
+  try {
+    return new Uint8Array(readFileSync(path));
+  } catch {
+    return null;
+  }
+}
 
 function loadFontBuffers(fontDirs?: string[], skipSystemFonts?: boolean): Uint8Array[] {
   const key = `${(fontDirs ?? []).join("\0")}\n${skipSystemFonts ?? false}`;
@@ -166,8 +174,18 @@ function loadFontBuffers(fontDirs?: string[], skipSystemFonts?: boolean): Uint8A
     return cachedFontBuffers;
   }
 
+  const buffers: Uint8Array[] = [];
+
+  // カラー絵文字フォントは TTC を含め優先読み込み (SVG <text> 絵文字の PNG 描画に必要)
+  if (!skipSystemFonts) {
+    for (const path of getEmojiFontPaths()) {
+      const buffer = readFontBuffer(path);
+      if (buffer) buffers.push(buffer);
+    }
+  }
+
   const allPaths = collectFontFilePaths(fontDirs, skipSystemFonts);
-  // TTC は resvg-wasm では不安定なため TTF/OTF のみを対象とする
+  // 通常フォントは TTC を除く TTF/OTF のみ (TTC は resvg-wasm では不安定)
   const ttfOtfPaths = allPaths.filter((p) => {
     const lower = p.toLowerCase();
     return lower.endsWith(".ttf") || lower.endsWith(".otf");
@@ -184,16 +202,13 @@ function loadFontBuffers(fontDirs?: string[], skipSystemFonts?: boolean): Uint8A
   }
   pathsWithSize.sort((a, b) => a.size - b.size);
 
-  const buffers: Uint8Array[] = [];
-  let totalSize = 0;
+  let remainingBytes = MAX_OTHER_FONT_BUFFER_BYTES;
   for (const { path, size } of pathsWithSize) {
-    if (totalSize + size > MAX_TOTAL_FONT_BUFFER_BYTES) break;
-    try {
-      buffers.push(new Uint8Array(readFileSync(path)));
-      totalSize += size;
-    } catch {
-      // 読み取り失敗はスキップ
-    }
+    if (size > remainingBytes) break;
+    const buffer = readFontBuffer(path);
+    if (!buffer) continue;
+    buffers.push(buffer);
+    remainingBytes -= size;
   }
 
   cachedFontBuffers = buffers;

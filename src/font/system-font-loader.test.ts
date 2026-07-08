@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { collectFontFilePaths } from "./system-font-loader.js";
+import { collectFontFilePaths, getEmojiFontPaths } from "./system-font-loader.js";
 
 const tempDirs: string[] = [];
 
@@ -21,6 +21,15 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe("getEmojiFontPaths", () => {
+  it("returns existing platform emoji font paths", () => {
+    const paths = getEmojiFontPaths();
+    for (const path of paths) {
+      expect(path.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("collectFontFilePaths skipSystemFonts", () => {
